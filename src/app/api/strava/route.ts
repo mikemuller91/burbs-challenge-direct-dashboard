@@ -78,12 +78,15 @@ function processActivities(stravaActivities: StravaActivity[]): DashboardData {
 
     const { activityPoints, elevationPoints, totalPoints, normalizedType } = calculatePoints(
       stravaActivity.sport_type || stravaActivity.type,
-      stravaActivity.distance,
-      stravaActivity.total_elevation_gain
+      stravaActivity.distance || 0,
+      stravaActivity.total_elevation_gain || 0
     );
 
     const distanceKm = stravaActivity.distance / 1000;
-    const dateStr = stravaActivity.start_date_local.split('T')[0];
+    // Club activities endpoint doesn't return dates, use activity index as fallback
+    const dateStr = stravaActivity.start_date_local
+      ? stravaActivity.start_date_local.split('T')[0]
+      : 'Unknown';
 
     // Create processed activity
     const processed: ProcessedActivity = {
@@ -134,7 +137,7 @@ function processActivities(stravaActivities: StravaActivity[]): DashboardData {
     }
     const individual = individualMap.get(athleteName)!;
     individual.totalPoints += totalPoints;
-    individual.elevation += stravaActivity.total_elevation_gain;
+    individual.elevation += stravaActivity.total_elevation_gain || 0;
     individual.elevationPoints += elevationPoints;
 
     if (!individual.activities[normalizedType]) {
@@ -143,15 +146,17 @@ function processActivities(stravaActivities: StravaActivity[]): DashboardData {
     individual.activities[normalizedType].distance += distanceKm;
     individual.activities[normalizedType].points += activityPoints;
 
-    // Update daily tracker
-    if (!dailyMap.has(dateStr)) {
-      dailyMap.set(dateStr, { tempoTantrums: 0, pointsPints: 0 });
-    }
-    const daily = dailyMap.get(dateStr)!;
-    if (team === TEAMS.TEMPO_TANTRUMS) {
-      daily.tempoTantrums += totalPoints;
-    } else {
-      daily.pointsPints += totalPoints;
+    // Update daily tracker (skip if no date available)
+    if (dateStr !== 'Unknown') {
+      if (!dailyMap.has(dateStr)) {
+        dailyMap.set(dateStr, { tempoTantrums: 0, pointsPints: 0 });
+      }
+      const daily = dailyMap.get(dateStr)!;
+      if (team === TEAMS.TEMPO_TANTRUMS) {
+        daily.tempoTantrums += totalPoints;
+      } else {
+        daily.pointsPints += totalPoints;
+      }
     }
   }
 

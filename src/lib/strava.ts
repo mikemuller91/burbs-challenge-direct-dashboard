@@ -119,41 +119,27 @@ export async function fetchClubActivities(
 
 /**
  * Fetch all club activities (handles pagination)
- * Limited to activities from February 2026 (challenge month)
+ * Note: Club activities endpoint doesn't return dates, so we fetch all recent activities
  */
 export async function fetchAllClubActivities(): Promise<StravaActivity[]> {
   const allActivities: StravaActivity[] = [];
   let page = 1;
   const perPage = 200;
 
-  // Challenge date range: February 2026
-  const challengeStart = new Date('2026-02-01T00:00:00Z');
-  const challengeEnd = new Date('2026-02-28T23:59:59Z');
-
   while (true) {
     const activities = await fetchClubActivities(page, perPage);
 
     if (activities.length === 0) break;
 
-    // Filter to challenge month only
-    const challengeActivities = activities.filter((activity) => {
-      const activityDate = new Date(activity.start_date);
-      return activityDate >= challengeStart && activityDate <= challengeEnd;
-    });
-
-    allActivities.push(...challengeActivities);
+    allActivities.push(...activities);
 
     // If we got fewer than requested, we've reached the end
     if (activities.length < perPage) break;
 
-    // If oldest activity in batch is before challenge start, stop
-    const oldestInBatch = new Date(activities[activities.length - 1].start_date);
-    if (oldestInBatch < challengeStart) break;
-
     page++;
 
-    // Safety limit
-    if (page > 10) break;
+    // Safety limit - fetch up to 1000 activities
+    if (page > 5) break;
   }
 
   return allActivities;
