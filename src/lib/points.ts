@@ -63,7 +63,7 @@ export function calculatePoints(
   if (config) {
     if (config.perKm) {
       const distanceKm = distanceMeters / 1000;
-      activityPoints = Math.round(distanceKm * config.perKm);
+      activityPoints = Math.floor(distanceKm * config.perKm);
     } else if (config.perWorkout) {
       activityPoints = config.perWorkout;
     }
