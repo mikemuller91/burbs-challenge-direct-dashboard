@@ -264,13 +264,21 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     pointsPints: scoreboard.reduce((sum, s) => sum + s.pointsPints, 0),
   };
 
-  // Convert individuals to array and sort by total points
+  // Convert individuals to array and recalculate elevation points from cumulative elevation
   const individuals = Array.from(individualMap.values())
-    .map((ind) => ({
-      ...ind,
-      totalPoints: Math.round(ind.totalPoints),
-      elevationPoints: Math.round(ind.elevationPoints),
-    }))
+    .map((ind) => {
+      // Calculate elevation points from cumulative elevation (6 per complete 1000m)
+      const calculatedElevationPoints = Math.floor(ind.elevation / 1000) * ELEVATION_POINTS_PER_1000M;
+      // Total points = activity points (already accumulated) + elevation points from cumulative
+      // Note: ind.totalPoints already includes per-activity elevation (which is 0 for <1000m activities)
+      // So we need to add the difference
+      const activityPointsOnly = ind.totalPoints - ind.elevationPoints; // Remove per-activity elevation
+      return {
+        ...ind,
+        elevationPoints: calculatedElevationPoints,
+        totalPoints: Math.round(activityPointsOnly + calculatedElevationPoints),
+      };
+    })
     .sort((a, b) => b.totalPoints - a.totalPoints);
 
   // Convert daily tracker and calculate running totals
