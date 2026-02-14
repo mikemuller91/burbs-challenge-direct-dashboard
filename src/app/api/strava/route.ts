@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchAllClubActivities, getAthleteDisplayName, StravaActivity } from '@/lib/strava';
-import { calculatePoints, getActivityCategories } from '@/lib/points';
+import { calculatePoints, getActivityCategories, POINTS_CONFIG, ELEVATION_ELIGIBLE_TYPES, ELEVATION_POINTS_PER_1000M } from '@/lib/points';
 import { getAthleteTeam, TEAMS, TeamName } from '@/lib/teams';
 import { getActivityDates } from '@/lib/db';
 
@@ -82,15 +82,19 @@ interface DashboardData {
 function processActivities(stravaActivities: StravaActivity[], storedDates: Record<string, string>): DashboardData {
   const activities: ProcessedActivity[] = [];
   const individualMap = new Map<string, IndividualStats>();
-  const scoreboardMap = new Map<string, { tempoTantrums: number; pointsPints: number }>();
   const dailyMap = new Map<string, { tempoTantrums: number; pointsPints: number }>();
 
-  // Initialize scoreboard with all activity categories
+  // Track cumulative distances (km) by activity type and team
+  const distanceMap = new Map<string, { tempoKm: number; pintsKm: number }>();
+  // Track cumulative elevation (meters) by team
+  const elevationTotals = { tempoMeters: 0, pintsMeters: 0 };
+  // Track workout counts by team
+  const workoutCounts = { tempoCount: 0, pintsCount: 0 };
+
+  // Initialize distance map with all activity categories
   for (const category of getActivityCategories()) {
-    scoreboardMap.set(category, { tempoTantrums: 0, pointsPints: 0 });
+    distanceMap.set(category, { tempoKm: 0, pintsKm: 0 });
   }
-  // Add elevation as a category
-  scoreboardMap.set('Elevation', { tempoTantrums: 0, pointsPints: 0 });
 
   // Process each activity
   for (const stravaActivity of stravaActivities) {
@@ -139,26 +143,36 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     const isFebruary = isFebruaryActivity(dateStr);
 
     if (isFebruary) {
-      // Update scoreboard
+      // Accumulate raw distances by activity type (for team scoring)
       const scoreKey = normalizedType === 'Other' ? 'Workout' : normalizedType;
-      if (scoreboardMap.has(scoreKey)) {
-        const current = scoreboardMap.get(scoreKey)!;
+
+      if (scoreKey === 'Workout') {
+        // Count workouts instead of distance
         if (team === TEAMS.TEMPO_TANTRUMS) {
-          current.tempoTantrums += activityPoints;
+          workoutCounts.tempoCount += 1;
         } else {
-          current.pointsPints += activityPoints;
+          workoutCounts.pintsCount += 1;
+        }
+      } else if (distanceMap.has(scoreKey)) {
+        // Accumulate distance in km
+        const current = distanceMap.get(scoreKey)!;
+        if (team === TEAMS.TEMPO_TANTRUMS) {
+          current.tempoKm += distanceKm;
+        } else {
+          current.pintsKm += distanceKm;
         }
       }
 
-      // Update elevation in scoreboard
-      const elevationScore = scoreboardMap.get('Elevation')!;
-      if (team === TEAMS.TEMPO_TANTRUMS) {
-        elevationScore.tempoTantrums += elevationPoints;
-      } else {
-        elevationScore.pointsPints += elevationPoints;
+      // Accumulate elevation (only for eligible types)
+      if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
+        if (team === TEAMS.TEMPO_TANTRUMS) {
+          elevationTotals.tempoMeters += stravaActivity.total_elevation_gain || 0;
+        } else {
+          elevationTotals.pintsMeters += stravaActivity.total_elevation_gain || 0;
+        }
       }
 
-      // Update individual stats
+      // Update individual stats (still track individual contributions)
       if (!individualMap.has(athleteName)) {
         individualMap.set(athleteName, {
           name: athleteName,
@@ -180,7 +194,7 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
       individual.activities[normalizedType].distance += distanceKm;
       individual.activities[normalizedType].points += activityPoints;
 
-      // Update daily tracker
+      // Update daily tracker with raw points (will be recalculated below)
       if (!dailyMap.has(dateStr)) {
         dailyMap.set(dateStr, { tempoTantrums: 0, pointsPints: 0 });
       }
@@ -193,14 +207,40 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     }
   }
 
-  // Convert scoreboard map to array
-  const scoreboard: TeamScore[] = Array.from(scoreboardMap.entries())
-    .map(([activity, scores]) => ({
-      activity,
-      tempoTantrums: Math.round(scores.tempoTantrums),
-      pointsPints: Math.round(scores.pointsPints),
-    }))
-    .filter((s) => s.tempoTantrums > 0 || s.pointsPints > 0);
+  // Now calculate team points from cumulative distances using Math.floor()
+  const scoreboard: TeamScore[] = [];
+
+  // Process distance-based activities
+  for (const [activityType, distances] of distanceMap.entries()) {
+    const config = POINTS_CONFIG[activityType];
+    if (config?.perKm && (distances.tempoKm > 0 || distances.pintsKm > 0)) {
+      scoreboard.push({
+        activity: activityType,
+        tempoTantrums: Math.floor(distances.tempoKm * config.perKm),
+        pointsPints: Math.floor(distances.pintsKm * config.perKm),
+      });
+    }
+  }
+
+  // Add workout points (6 points per workout)
+  if (workoutCounts.tempoCount > 0 || workoutCounts.pintsCount > 0) {
+    scoreboard.push({
+      activity: 'Workout',
+      tempoTantrums: workoutCounts.tempoCount * 6,
+      pointsPints: workoutCounts.pintsCount * 6,
+    });
+  }
+
+  // Add elevation points (6 points per 1000m, floor of cumulative total)
+  const tempoElevationPoints = Math.floor((elevationTotals.tempoMeters / 1000) * ELEVATION_POINTS_PER_1000M);
+  const pintsElevationPoints = Math.floor((elevationTotals.pintsMeters / 1000) * ELEVATION_POINTS_PER_1000M);
+  if (tempoElevationPoints > 0 || pintsElevationPoints > 0) {
+    scoreboard.push({
+      activity: 'Elevation',
+      tempoTantrums: tempoElevationPoints,
+      pointsPints: pintsElevationPoints,
+    });
+  }
 
   // Calculate totals
   const totals = {
