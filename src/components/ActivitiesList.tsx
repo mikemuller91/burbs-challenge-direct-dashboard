@@ -217,9 +217,10 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
   const columns: { key: keyof ProcessedActivity; label: string }[] = [
     { key: 'date', label: 'Date' },
     { key: 'athlete', label: 'Athlete' },
+    { key: 'title', label: 'Activity' },
     { key: 'normalizedType', label: 'Type' },
-    { key: 'distance', label: 'Distance (km)' },
-    { key: 'totalPoints', label: 'Points' },
+    { key: 'distance', label: 'Dist (km)' },
+    { key: 'totalPoints', label: 'Pts' },
   ];
 
   return (
@@ -408,6 +409,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                     )}
                   </td>
                   <td className="py-3 px-4 text-white">{activity.athlete}</td>
+                  <td className="py-3 px-4 text-white text-sm truncate max-w-[200px]" title={activity.title}>{activity.title}</td>
                   <td className="py-3 px-4 text-white">{activity.normalizedType}</td>
                   <td className="py-3 px-4 text-white">{activity.distance.toFixed(2)}</td>
                   <td className="py-3 px-4 text-white font-medium">{activity.totalPoints}</td>
