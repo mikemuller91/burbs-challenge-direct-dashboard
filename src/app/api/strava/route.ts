@@ -158,19 +158,19 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     const isFebruary = isFebruaryActivity(dateStr);
 
     if (isFebruary) {
-      // Accumulate raw distances by activity type (for team scoring)
-      const scoreKey = normalizedType === 'Other' ? 'Workout' : normalizedType;
-
-      if (scoreKey === 'Workout') {
+      // Skip "Other" activities (Hike, Walk, Tennis, Golf, etc.) - they get 0 points
+      if (normalizedType === 'Other') {
+        // Don't count for team scoring
+      } else if (normalizedType === 'Workout') {
         // Count workouts instead of distance
         if (team === TEAMS.TEMPO_TANTRUMS) {
           workoutCounts.tempoCount += 1;
         } else {
           workoutCounts.pintsCount += 1;
         }
-      } else if (distanceMap.has(scoreKey)) {
+      } else if (distanceMap.has(normalizedType)) {
         // Accumulate distance in km
-        const current = distanceMap.get(scoreKey)!;
+        const current = distanceMap.get(normalizedType)!;
         if (team === TEAMS.TEMPO_TANTRUMS) {
           current.tempoKm += distanceKm;
         } else {
