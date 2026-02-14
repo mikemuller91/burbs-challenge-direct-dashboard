@@ -1,10 +1,10 @@
 import { Redis } from '@upstash/redis';
 
 // Initialize Redis client
-// Requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN env vars
+// Supports both Vercel integration names (KV_REST_API_*) and standard Upstash names
 const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '',
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '',
 });
 
 const ACTIVITY_DATES_KEY = 'activity_dates';
