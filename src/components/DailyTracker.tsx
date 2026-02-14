@@ -14,8 +14,16 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+interface DailyPoint {
+  date: string;
+  tempoTantrums: number;
+  pointsPints: number;
+  tempoTotal: number;
+  pintsTotal: number;
+}
+
 interface Props {
-  data: string[][];
+  data: DailyPoint[];
   totals: { tempoTantrums: number; pointsPints: number };
 }
 
@@ -28,57 +36,37 @@ interface ChartDataPoint {
 }
 
 export default function DailyTracker({ data, totals }: Props) {
-  // Parse the raw data from the Daily Tracker sheet
-  // Column 10: Date
-  // Column 11: Tempo Tantrums Total Points
-  // Column 12: Points & Pints Total Points
-  // Column 13: Tempo Tantrums Daily Points
-  // Column 14: Points & Pints Daily Points
+  // Transform data for the chart
   const chartData = useMemo(() => {
-    if (data.length < 2) return [];
-
-    const points: ChartDataPoint[] = [];
-
-    // Skip header row (row 0), parse data rows
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      const date = row[10];
-      if (!date || !date.trim()) continue;
-
-      const tempoTotal = parseFloat(row[11]) || 0;
-      const pintsTotal = parseFloat(row[12]) || 0;
-      const tempoDaily = parseFloat(row[13]) || 0;
-      const pintsDaily = parseFloat(row[14]) || 0;
-
-      // Only add if we have valid data
-      if (date && (tempoDaily > 0 || pintsDaily > 0 || tempoTotal > 0 || pintsTotal > 0)) {
-        points.push({
-          date,
-          tempoDaily,
-          pintsDaily,
-          tempoTotal,
-          pintsTotal,
-        });
-      }
-    }
-
-    return points;
+    return data.map((point): ChartDataPoint => ({
+      date: formatDateLabel(point.date),
+      tempoDaily: point.tempoTantrums,
+      pintsDaily: point.pointsPints,
+      tempoTotal: point.tempoTotal,
+      pintsTotal: point.pintsTotal,
+    }));
   }, [data]);
+
+  // Format date for display
+  function formatDateLabel(dateStr: string): string {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+  }
 
   // Calculate max values for Y-axis domains
   const maxDaily = useMemo(() => {
     if (chartData.length === 0) return 150;
     const max = Math.max(...chartData.map(d => Math.max(d.tempoDaily, d.pintsDaily)));
-    return Math.ceil(max / 50) * 50 + 50; // Round up to nearest 50 and add buffer
+    return Math.ceil(max / 50) * 50 + 50;
   }, [chartData]);
 
   const maxTotal = useMemo(() => {
     if (chartData.length === 0) return 600;
     const max = Math.max(...chartData.map(d => Math.max(d.tempoTotal, d.pintsTotal)));
-    return Math.ceil(max / 100) * 100 + 100; // Round up to nearest 100 and add buffer
+    return Math.ceil(max / 100) * 100 + 100;
   }, [chartData]);
 
-  if (data.length < 2 || chartData.length === 0) {
+  if (data.length === 0) {
     return (
       <div className="bg-slate-800/50 rounded-xl p-8 text-center">
         <p className="text-slate-400">No daily tracker data available</p>

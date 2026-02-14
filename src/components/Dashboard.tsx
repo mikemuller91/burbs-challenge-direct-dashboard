@@ -6,87 +6,79 @@ import ActivitiesList from './ActivitiesList';
 import DailyTracker from './DailyTracker';
 import IndividualsTable from './IndividualsTable';
 import CountdownTimer from './CountdownTimer';
-import {
-  TeamScore,
-  parseScoreboard,
-  getTotals,
-} from '@/lib/sheets';
-import Papa from 'papaparse';
 
-const SHEET_ID = '2PACX-1vRnGFgSOWvgvysshy6qPwgLpBp0C9-oIHOzGrtXC6LNwZfp9RSIXshzHoOn4hqpsFO-AKkmo9OR5wUA';
+// Types matching the Strava API response
+interface TeamScore {
+  activity: string;
+  tempoTantrums: number;
+  pointsPints: number;
+}
 
-// Sheet GIDs from the published spreadsheet
-const SHEET_GIDS = {
-  scoreboard: 0,
-  individuals: 1757627740,
-  dailyTracker: 1201336220,
-  activities: 1272828437,     // Strava Club Activities
-  teams: 158061936,
-  activityOverload: 1272195002,
-};
+interface ProcessedActivity {
+  id: number;
+  date: string;
+  athlete: string;
+  team: string;
+  type: string;
+  normalizedType: string;
+  distance: number;
+  elevation: number;
+  points: number;
+  elevationPoints: number;
+  totalPoints: number;
+  title: string;
+}
 
-async function fetchSheet(gid: number): Promise<string[][]> {
-  const url = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/pub?gid=${gid}&single=true&output=csv`;
-  const response = await fetch(url, { cache: 'no-store' });
-  const text = await response.text();
-  const result = Papa.parse<string[]>(text, { skipEmptyLines: true });
-  return result.data;
+interface IndividualStats {
+  name: string;
+  team: string;
+  totalPoints: number;
+  activities: Record<string, { distance: number; points: number }>;
+  elevation: number;
+  elevationPoints: number;
+}
+
+interface DailyPoint {
+  date: string;
+  tempoTantrums: number;
+  pointsPints: number;
+  tempoTotal: number;
+  pintsTotal: number;
+}
+
+interface DashboardData {
+  activities: ProcessedActivity[];
+  scoreboard: TeamScore[];
+  totals: { tempoTantrums: number; pointsPints: number };
+  individuals: IndividualStats[];
+  dailyTracker: DailyPoint[];
+  lastUpdated: string;
 }
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'scoreboard' | 'individuals' | 'activities' | 'tracker'>('scoreboard');
-  const [scores, setScores] = useState<TeamScore[]>([]);
-  const [totals, setTotals] = useState({ tempoTantrums: 0, pointsPints: 0 });
-  const [activitiesData, setActivitiesData] = useState<string[][]>([]);
-  const [teamsData, setTeamsData] = useState<string[][]>([]);
-  const [dailyTrackerData, setDailyTrackerData] = useState<string[][]>([]);
-  const [individualsData, setIndividualsData] = useState<string[][]>([]);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Fetch scoreboard data
-      const scoreboardData = await fetchSheet(SHEET_GIDS.scoreboard);
-      setScores(parseScoreboard(scoreboardData));
-      setTotals(getTotals(scoreboardData));
+      const response = await fetch('/api/strava', { cache: 'no-store' });
 
-      // Try to fetch activities data
-      try {
-        const activitiesRaw = await fetchSheet(SHEET_GIDS.activities);
-        setActivitiesData(activitiesRaw);
-      } catch (e) {
-        console.log('Activities sheet not available');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch data');
       }
 
-      // Try to fetch teams data
-      try {
-        const teamsRaw = await fetchSheet(SHEET_GIDS.teams);
-        setTeamsData(teamsRaw);
-      } catch (e) {
-        console.log('Teams sheet not available');
-      }
-
-      // Try to fetch daily tracker data
-      try {
-        const trackerData = await fetchSheet(SHEET_GIDS.dailyTracker);
-        setDailyTrackerData(trackerData);
-      } catch (e) {
-        console.log('Daily tracker sheet not available');
-      }
-
-      // Try to fetch individuals data
-      try {
-        const individualsRaw = await fetchSheet(SHEET_GIDS.individuals);
-        setIndividualsData(individualsRaw);
-      } catch (e) {
-        console.log('Individuals sheet not available');
-      }
-
-      setLastUpdated(new Date());
-    } catch (error) {
-      console.error('Error loading data:', error);
+      const dashboardData: DashboardData = await response.json();
+      setData(dashboardData);
+      setLastUpdated(new Date(dashboardData.lastUpdated));
+    } catch (err) {
+      console.error('Error loading data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -175,31 +167,39 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-500/20 border border-red-500 rounded-xl p-4 mb-4 text-red-400">
+            <p className="font-medium">Error loading data</p>
+            <p className="text-sm mt-1">{error}</p>
+          </div>
+        )}
+
         {/* Content */}
-        {loading && scores.length === 0 ? (
+        {loading && !data ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
           </div>
-        ) : (
+        ) : data ? (
           <>
             {activeTab === 'scoreboard' && (
-              <TeamScoreboard scores={scores} totals={totals} />
+              <TeamScoreboard scores={data.scoreboard} totals={data.totals} />
             )}
             {activeTab === 'individuals' && (
-              <IndividualsTable data={individualsData} />
+              <IndividualsTable data={data.individuals} />
             )}
             {activeTab === 'activities' && (
-              <ActivitiesList data={activitiesData} teamsData={teamsData} />
+              <ActivitiesList data={data.activities} />
             )}
             {activeTab === 'tracker' && (
-              <DailyTracker data={dailyTrackerData} totals={totals} />
+              <DailyTracker data={data.dailyTracker} totals={data.totals} />
             )}
           </>
-        )}
+        ) : null}
 
         {/* Footer */}
         <div className="mt-12 text-center text-slate-500 text-sm">
-          <p>Data sourced from Google Sheets • Auto-refreshes every 5 minutes</p>
+          <p>Data sourced directly from Strava • Auto-refreshes every 5 minutes</p>
         </div>
       </div>
     </div>

@@ -2,89 +2,72 @@
 
 import { useState, useMemo } from 'react';
 
+interface IndividualStats {
+  name: string;
+  team: string;
+  totalPoints: number;
+  activities: Record<string, { distance: number; points: number }>;
+  elevation: number;
+  elevationPoints: number;
+}
+
 interface Props {
-  data: string[][];
+  data: IndividualStats[];
 }
 
 export default function IndividualsTable({ data }: Props) {
-  const [sortColumn, setSortColumn] = useState<number | null>(null);
+  const [sortColumn, setSortColumn] = useState<string>('totalPoints');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [teamFilter, setTeamFilter] = useState<string>('all');
-  const [initialSortApplied, setInitialSortApplied] = useState(false);
 
-  // Skip row 0, use row 1 as headers, data starts from row 2
-  const headers = data.length >= 2 ? data[1] : [];
-  const rows = useMemo(() =>
-    data.length >= 3
-      ? data.slice(2).filter(row => row.some(cell => cell && cell.trim() !== ''))
-      : [],
-    [data]
-  );
-
-  // Find team column
-  const teamColumnIndex = useMemo(() =>
-    headers.findIndex(h => h?.toLowerCase().includes('team')),
-    [headers]
-  );
-
-  // Find total points column for default sorting
-  const totalPointsColumnIndex = useMemo(() =>
-    headers.findIndex(h =>
-      h?.toLowerCase().includes('total') && h?.toLowerCase().includes('point')
-    ),
-    [headers]
-  );
-
-  // Apply initial sort on first render when we have data
-  if (!initialSortApplied && totalPointsColumnIndex >= 0 && rows.length > 0) {
-    setSortColumn(totalPointsColumnIndex);
-    setInitialSortApplied(true);
-  }
-
-  // Get unique teams for filter
-  const teams = useMemo(() =>
-    ['all', ...new Set(rows.map(row => row[teamColumnIndex]).filter(Boolean))],
-    [rows, teamColumnIndex]
-  );
+  // Get all activity types across all individuals
+  const activityTypes = useMemo(() => {
+    const types = new Set<string>();
+    data.forEach((individual) => {
+      Object.keys(individual.activities).forEach((type) => types.add(type));
+    });
+    return Array.from(types).sort();
+  }, [data]);
 
   // Filter by team
-  const filteredRows = useMemo(() =>
-    teamFilter === 'all'
-      ? rows
-      : rows.filter(row => row[teamColumnIndex] === teamFilter),
-    [rows, teamFilter, teamColumnIndex]
-  );
+  const filteredData = useMemo(() => {
+    if (teamFilter === 'all') return data;
+    return data.filter((individual) => individual.team === teamFilter);
+  }, [data, teamFilter]);
 
-  // Sort rows
-  const sortedRows = useMemo(() => {
-    const sorted = [...filteredRows];
-
-    if (sortColumn === null) return sorted;
+  // Sort data
+  const sortedData = useMemo(() => {
+    const sorted = [...filteredData];
 
     return sorted.sort((a, b) => {
-      const aVal = a[sortColumn] || '';
-      const bVal = b[sortColumn] || '';
+      let aVal: number;
+      let bVal: number;
 
-      // Try numeric sort first
-      const aNum = parseFloat(aVal);
-      const bNum = parseFloat(bVal);
-
-      if (!isNaN(aNum) && !isNaN(bNum)) {
-        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      if (sortColumn === 'totalPoints') {
+        aVal = a.totalPoints;
+        bVal = b.totalPoints;
+      } else if (sortColumn === 'elevation') {
+        aVal = a.elevationPoints;
+        bVal = b.elevationPoints;
+      } else if (sortColumn === 'name') {
+        return sortDirection === 'asc'
+          ? a.name.localeCompare(b.name)
+          : b.name.localeCompare(a.name);
+      } else {
+        // Activity type column
+        aVal = a.activities[sortColumn]?.points || 0;
+        bVal = b.activities[sortColumn]?.points || 0;
       }
 
-      // Fall back to string sort
-      return sortDirection === 'asc'
-        ? aVal.localeCompare(bVal)
-        : bVal.localeCompare(aVal);
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
     });
-  }, [filteredRows, sortColumn, sortDirection]);
+  }, [filteredData, sortColumn, sortDirection]);
 
-  const handleSort = (columnIndex: number) => {
-    if (sortColumn === columnIndex) {
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      setSortColumn(columnIndex);
+      setSortColumn(column);
       setSortDirection('desc');
     }
   };
@@ -97,13 +80,15 @@ export default function IndividualsTable({ data }: Props) {
   };
 
   const getTeamBgColor = (team: string) => {
-    if (!team) return 'bg-slate-800/50 border-slate-700';
-    if (team.toLowerCase().includes('tempo')) return 'bg-blue-500/10 border-blue-500/30';
-    if (team.toLowerCase().includes('pints')) return 'bg-orange-500/10 border-orange-500/30';
-    return 'bg-slate-800/50 border-slate-700';
+    if (!team) return '';
+    if (team.toLowerCase().includes('tempo')) return 'bg-blue-500/5';
+    if (team.toLowerCase().includes('pints')) return 'bg-orange-500/5';
+    return '';
   };
 
-  if (data.length < 3 || rows.length === 0) {
+  const teams = ['all', 'Tempo Tantrums', 'Points & Pints'];
+
+  if (data.length === 0) {
     return (
       <div className="bg-slate-800/50 rounded-xl p-8 text-center">
         <p className="text-slate-400">No individual data available</p>
@@ -114,9 +99,9 @@ export default function IndividualsTable({ data }: Props) {
   return (
     <div className="space-y-6">
       {/* Filter */}
-      {teamColumnIndex >= 0 && (
-        <div className="flex gap-4 items-center">
-          <label className="text-slate-400">Filter by Team:</label>
+      <div className="flex flex-wrap gap-4 items-end">
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Team</label>
           <select
             value={teamFilter}
             onChange={(e) => setTeamFilter(e.target.value)}
@@ -129,7 +114,10 @@ export default function IndividualsTable({ data }: Props) {
             ))}
           </select>
         </div>
-      )}
+        <p className="text-slate-400 text-sm pb-2">
+          Showing <span className="text-white font-medium">{filteredData.length}</span> of {data.length} athletes
+        </p>
+      </div>
 
       {/* Table */}
       <div className="bg-slate-800/50 rounded-2xl overflow-hidden">
@@ -137,15 +125,42 @@ export default function IndividualsTable({ data }: Props) {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-700/50">
-                {headers.map((header, idx) => (
+                <th
+                  onClick={() => handleSort('name')}
+                  className="text-left py-3 px-4 text-slate-300 font-medium cursor-pointer hover:bg-slate-600/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    Athlete
+                    {sortColumn === 'name' && (
+                      <span className="text-blue-400">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th className="text-left py-3 px-4 text-slate-300 font-medium">Team</th>
+                <th
+                  onClick={() => handleSort('totalPoints')}
+                  className="text-right py-3 px-4 text-slate-300 font-medium cursor-pointer hover:bg-slate-600/50 transition-colors"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Total Points
+                    {sortColumn === 'totalPoints' && (
+                      <span className="text-blue-400">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                {activityTypes.map((type) => (
                   <th
-                    key={idx}
-                    onClick={() => handleSort(idx)}
-                    className="text-left py-3 px-4 text-slate-300 font-medium cursor-pointer hover:bg-slate-600/50 transition-colors"
+                    key={type}
+                    onClick={() => handleSort(type)}
+                    className="text-right py-3 px-4 text-slate-300 font-medium cursor-pointer hover:bg-slate-600/50 transition-colors whitespace-nowrap"
                   >
-                    <div className="flex items-center gap-2">
-                      {header || `Col ${idx}`}
-                      {sortColumn === idx && (
+                    <div className="flex items-center justify-end gap-2">
+                      {type}
+                      {sortColumn === type && (
                         <span className="text-blue-400">
                           {sortDirection === 'asc' ? '↑' : '↓'}
                         </span>
@@ -153,28 +168,68 @@ export default function IndividualsTable({ data }: Props) {
                     </div>
                   </th>
                 ))}
+                <th
+                  onClick={() => handleSort('elevation')}
+                  className="text-right py-3 px-4 text-slate-300 font-medium cursor-pointer hover:bg-slate-600/50 transition-colors"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Elevation
+                    {sortColumn === 'elevation' && (
+                      <span className="text-blue-400">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((row, rowIdx) => (
+              {sortedData.map((individual, idx) => (
                 <tr
-                  key={rowIdx}
-                  className={`border-t border-slate-700/50 hover:bg-slate-700/30 transition-colors ${
-                    teamColumnIndex >= 0 ? getTeamBgColor(row[teamColumnIndex] || '') : ''
-                  }`}
+                  key={individual.name}
+                  className={`border-t border-slate-700/50 hover:bg-slate-700/30 transition-colors ${getTeamBgColor(individual.team)}`}
                 >
-                  {headers.map((_, colIdx) => (
-                    <td
-                      key={colIdx}
-                      className={`py-3 px-4 ${
-                        colIdx === teamColumnIndex
-                          ? getTeamColor(row[colIdx] || '')
-                          : 'text-white'
-                      }`}
-                    >
-                      {row[colIdx] || '-'}
-                    </td>
-                  ))}
+                  <td className="py-3 px-4 text-white font-medium">
+                    <div className="flex items-center gap-2">
+                      {idx < 3 && (
+                        <span className="text-lg">
+                          {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
+                        </span>
+                      )}
+                      {individual.name}
+                    </div>
+                  </td>
+                  <td className={`py-3 px-4 ${getTeamColor(individual.team)}`}>
+                    {individual.team}
+                  </td>
+                  <td className="py-3 px-4 text-right text-white font-bold">
+                    {individual.totalPoints}
+                  </td>
+                  {activityTypes.map((type) => {
+                    const activity = individual.activities[type];
+                    return (
+                      <td key={type} className="py-3 px-4 text-right text-slate-300">
+                        {activity ? (
+                          <div>
+                            <span className="text-white">{activity.points}</span>
+                            <span className="text-slate-500 text-xs ml-1">
+                              ({activity.distance.toFixed(1)}km)
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600">-</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="py-3 px-4 text-right text-slate-300">
+                    <div>
+                      <span className="text-white">{individual.elevationPoints}</span>
+                      <span className="text-slate-500 text-xs ml-1">
+                        ({individual.elevation.toFixed(0)}m)
+                      </span>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
