@@ -84,6 +84,18 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
       const aVal = a[sortColumn];
       const bVal = b[sortColumn];
 
+      // Special handling for date sorting
+      if (sortColumn === 'date') {
+        // Put "Unknown" dates at the end regardless of sort direction
+        if (a.date === 'Unknown' && b.date !== 'Unknown') return 1;
+        if (b.date === 'Unknown' && a.date !== 'Unknown') return -1;
+        if (a.date === 'Unknown' && b.date === 'Unknown') return 0;
+        // Compare valid dates
+        const aDate = new Date(a.date).getTime();
+        const bDate = new Date(b.date).getTime();
+        return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
+      }
+
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
       }
@@ -263,7 +275,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
           <label className="block text-sm text-slate-400 mb-1">Activity Type</label>
           <select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+            onChange={(e) => { setTypeFilter(e.target.value); setSelectedIds(new Set()); }}
             className="bg-slate-800 text-white rounded-lg px-4 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
           >
             {activityTypes.map((type) => (
@@ -278,7 +290,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
           <label className="block text-sm text-slate-400 mb-1">Team</label>
           <select
             value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
+            onChange={(e) => { setTeamFilter(e.target.value); setSelectedIds(new Set()); }}
             className="bg-slate-800 text-white rounded-lg px-4 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
           >
             {teams.map((team) => (
@@ -293,7 +305,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
           <label className="block text-sm text-slate-400 mb-1">Athlete</label>
           <select
             value={athleteFilter}
-            onChange={(e) => setAthleteFilter(e.target.value)}
+            onChange={(e) => { setAthleteFilter(e.target.value); setSelectedIds(new Set()); }}
             className="bg-slate-800 text-white rounded-lg px-4 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
           >
             {athletes.map((athlete) => (
@@ -308,7 +320,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
           <label className="block text-sm text-slate-400 mb-1">Date Status</label>
           <select
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
+            onChange={(e) => { setDateFilter(e.target.value); setSelectedIds(new Set()); }}
             className="bg-slate-800 text-white rounded-lg px-4 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
           >
             <option value="all">All Activities</option>
