@@ -200,7 +200,10 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
       }
       const individual = individualMap.get(athleteName)!;
       individual.totalPoints += totalPoints;
-      individual.elevation += stravaActivity.total_elevation_gain || 0;
+      // Only accumulate elevation from eligible activity types (Road Run, Trail Run, Cycle, MTB)
+      if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
+        individual.elevation += stravaActivity.total_elevation_gain || 0;
+      }
       individual.elevationPoints += elevationPoints;
 
       if (!individual.activities[normalizedType]) {
