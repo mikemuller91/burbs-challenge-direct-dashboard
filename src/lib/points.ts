@@ -20,18 +20,20 @@ export const ACTIVITY_TYPE_MAP: Record<string, string> = {
 
 // Points per unit for each activity type
 // Distance is in kilometers, elevation in meters
-export const POINTS_CONFIG: Record<string, { perKm?: number; perWorkout?: number; perElevation?: number }> = {
+export const POINTS_CONFIG: Record<string, { perKm?: number; perWorkout?: number }> = {
   'Road Run': { perKm: 1 },
   'Trail Run': { perKm: 1.1 },
   'Cycle': { perKm: 0.25 },
-  'MTB': { perKm: 0.39 },
+  'MTB': { perKm: 0.4 },
   'Swim': { perKm: 4 },
   'Workout': { perWorkout: 6 },
   'Paddle Ski': { perKm: 1 },
 };
 
 // Elevation points: 6 points per 1000m
+// Only applies to these activity types
 export const ELEVATION_POINTS_PER_1000M = 6;
+export const ELEVATION_ELIGIBLE_TYPES = ['Road Run', 'Trail Run', 'Cycle', 'MTB'];
 
 export interface ActivityPoints {
   activityPoints: number;
@@ -67,8 +69,11 @@ export function calculatePoints(
     }
   }
 
-  // Elevation points: 6 per 1000m
-  const elevationPoints = Math.round((elevationGain / 1000) * ELEVATION_POINTS_PER_1000M);
+  // Elevation points: 6 per 1000m, only for eligible activity types
+  let elevationPoints = 0;
+  if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
+    elevationPoints = Math.round((elevationGain / 1000) * ELEVATION_POINTS_PER_1000M);
+  }
 
   return {
     activityPoints,
