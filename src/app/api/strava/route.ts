@@ -264,19 +264,36 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     pointsPints: scoreboard.reduce((sum, s) => sum + s.pointsPints, 0),
   };
 
-  // Convert individuals to array and recalculate elevation points from cumulative elevation
+  // Convert individuals to array and recalculate all points from cumulative values
   const individuals = Array.from(individualMap.values())
     .map((ind) => {
+      // Recalculate activity points from cumulative distances
+      let totalActivityPoints = 0;
+      const recalculatedActivities: Record<string, { distance: number; points: number }> = {};
+
+      for (const [activityType, data] of Object.entries(ind.activities)) {
+        const config = POINTS_CONFIG[activityType];
+        let points = 0;
+        if (config?.perKm) {
+          // Points from cumulative distance: floor(distance) * rate for 1pt/km activities
+          // or floor(distance * rate) for fractional rates
+          points = Math.floor(data.distance * config.perKm);
+        } else if (config?.perWorkout) {
+          // Workouts: keep the accumulated count * 6
+          points = data.points; // This was already calculated correctly per workout
+        }
+        recalculatedActivities[activityType] = { distance: data.distance, points };
+        totalActivityPoints += points;
+      }
+
       // Calculate elevation points from cumulative elevation (6 per complete 1000m)
       const calculatedElevationPoints = Math.floor(ind.elevation / 1000) * ELEVATION_POINTS_PER_1000M;
-      // Total points = activity points (already accumulated) + elevation points from cumulative
-      // Note: ind.totalPoints already includes per-activity elevation (which is 0 for <1000m activities)
-      // So we need to add the difference
-      const activityPointsOnly = ind.totalPoints - ind.elevationPoints; // Remove per-activity elevation
+
       return {
         ...ind,
+        activities: recalculatedActivities,
         elevationPoints: calculatedElevationPoints,
-        totalPoints: Math.round(activityPointsOnly + calculatedElevationPoints),
+        totalPoints: totalActivityPoints + calculatedElevationPoints,
       };
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
