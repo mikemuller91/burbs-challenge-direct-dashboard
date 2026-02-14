@@ -10,8 +10,13 @@ export const revalidate = 0;
 /**
  * Generate a unique ID for an activity based on its properties
  * Since Strava Club Activities API doesn't return activity IDs
+ * Uses a counter map to handle duplicate activities (same name, type, distance)
  */
-function generateActivityId(activity: StravaActivity, athleteName: string): string {
+function generateActivityId(
+  activity: StravaActivity,
+  athleteName: string,
+  usedIds: Map<string, number>
+): string {
   const str = `${athleteName}|${activity.name}|${activity.distance}|${activity.sport_type || activity.type}`;
   // Simple hash function
   let hash = 0;
@@ -20,7 +25,14 @@ function generateActivityId(activity: StravaActivity, athleteName: string): stri
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32bit integer
   }
-  return Math.abs(hash).toString();
+  const baseId = Math.abs(hash).toString();
+
+  // Track how many times this base ID has been used
+  const count = usedIds.get(baseId) || 0;
+  usedIds.set(baseId, count + 1);
+
+  // Append suffix for duplicates
+  return count === 0 ? baseId : `${baseId}_${count}`;
 }
 
 /**
@@ -96,6 +108,9 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     distanceMap.set(category, { tempoKm: 0, pintsKm: 0 });
   }
 
+  // Track used IDs to handle duplicates
+  const usedIds = new Map<string, number>();
+
   // Process each activity
   for (const stravaActivity of stravaActivities) {
     const athleteName = getAthleteDisplayName(stravaActivity);
@@ -115,7 +130,7 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     const distanceKm = stravaActivity.distance / 1000;
 
     // Generate a unique ID for this activity
-    const activityId = generateActivityId(stravaActivity, athleteName);
+    const activityId = generateActivityId(stravaActivity, athleteName, usedIds);
 
     // Use stored date if available, otherwise try Strava date, otherwise Unknown
     const dateStr = storedDates[activityId]
