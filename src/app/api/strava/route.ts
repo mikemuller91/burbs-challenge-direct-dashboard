@@ -24,12 +24,12 @@ function generateActivityId(activity: StravaActivity, athleteName: string): stri
 }
 
 /**
- * Check if a date string is in February 2025 (the challenge month)
+ * Check if a date string is in February 2026 (the challenge month)
  */
 function isFebruaryActivity(dateStr: string): boolean {
   if (dateStr === 'Unknown') return false;
   // Date format is YYYY-MM-DD
-  return dateStr.startsWith('2025-02');
+  return dateStr.startsWith('2026-02');
 }
 
 interface ProcessedActivity {
