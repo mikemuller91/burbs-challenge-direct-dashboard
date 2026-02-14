@@ -104,8 +104,14 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
   const existingStored = await getStoredActivities();
   const storedActivityMap = new Map<string, StoredActivity>();
 
-  // Index existing stored activities by ID
+  // Index existing stored activities by ID, but update dates from storedDates if available
+  // This ensures manually entered dates take precedence
   for (const stored of existingStored) {
+    // If there's a manually entered date in storedDates, use it
+    const manualDate = storedDates[stored.id];
+    if (manualDate && manualDate !== stored.date) {
+      stored.date = manualDate;
+    }
     storedActivityMap.set(stored.id, stored);
   }
 
@@ -123,10 +129,10 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
   // Convert new Strava activities to StoredActivity format
   const newStoredActivities: StoredActivity[] = [];
   for (const { activity, id } of stravaWithIds) {
-    // Get date from stored dates or Strava or Unknown
+    // Get date: prefer manual date, then existing stored date, then Strava, then Unknown
     const existingStored = storedActivityMap.get(id);
-    const date = existingStored?.date
-      || storedDates[id]
+    const date = storedDates[id]
+      || existingStored?.date
       || (activity.start_date_local ? activity.start_date_local.split('T')[0] : null)
       || 'Unknown';
 
@@ -135,7 +141,7 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
     storedActivityMap.set(id, storedActivity);
   }
 
-  // Save merged activities
+  // Save merged activities (this updates all activities with correct dates)
   await saveActivities(newStoredActivities);
   await setLastSync();
 
