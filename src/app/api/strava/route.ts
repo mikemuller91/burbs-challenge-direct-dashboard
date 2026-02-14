@@ -23,6 +23,15 @@ function generateActivityId(activity: StravaActivity, athleteName: string): stri
   return Math.abs(hash).toString();
 }
 
+/**
+ * Check if a date string is in February 2025 (the challenge month)
+ */
+function isFebruaryActivity(dateStr: string): boolean {
+  if (dateStr === 'Unknown') return false;
+  // Date format is YYYY-MM-DD
+  return dateStr.startsWith('2025-02');
+}
+
 interface ProcessedActivity {
   id: string;
   date: string;
@@ -126,49 +135,52 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     };
     activities.push(processed);
 
-    // Update scoreboard
-    const scoreKey = normalizedType === 'Other' ? 'Workout' : normalizedType;
-    if (scoreboardMap.has(scoreKey)) {
-      const current = scoreboardMap.get(scoreKey)!;
-      if (team === TEAMS.TEMPO_TANTRUMS) {
-        current.tempoTantrums += activityPoints;
-      } else {
-        current.pointsPints += activityPoints;
+    // Only count February activities for scoring
+    const isFebruary = isFebruaryActivity(dateStr);
+
+    if (isFebruary) {
+      // Update scoreboard
+      const scoreKey = normalizedType === 'Other' ? 'Workout' : normalizedType;
+      if (scoreboardMap.has(scoreKey)) {
+        const current = scoreboardMap.get(scoreKey)!;
+        if (team === TEAMS.TEMPO_TANTRUMS) {
+          current.tempoTantrums += activityPoints;
+        } else {
+          current.pointsPints += activityPoints;
+        }
       }
-    }
 
-    // Update elevation in scoreboard
-    const elevationScore = scoreboardMap.get('Elevation')!;
-    if (team === TEAMS.TEMPO_TANTRUMS) {
-      elevationScore.tempoTantrums += elevationPoints;
-    } else {
-      elevationScore.pointsPints += elevationPoints;
-    }
+      // Update elevation in scoreboard
+      const elevationScore = scoreboardMap.get('Elevation')!;
+      if (team === TEAMS.TEMPO_TANTRUMS) {
+        elevationScore.tempoTantrums += elevationPoints;
+      } else {
+        elevationScore.pointsPints += elevationPoints;
+      }
 
-    // Update individual stats
-    if (!individualMap.has(athleteName)) {
-      individualMap.set(athleteName, {
-        name: athleteName,
-        team,
-        totalPoints: 0,
-        activities: {},
-        elevation: 0,
-        elevationPoints: 0,
-      });
-    }
-    const individual = individualMap.get(athleteName)!;
-    individual.totalPoints += totalPoints;
-    individual.elevation += stravaActivity.total_elevation_gain || 0;
-    individual.elevationPoints += elevationPoints;
+      // Update individual stats
+      if (!individualMap.has(athleteName)) {
+        individualMap.set(athleteName, {
+          name: athleteName,
+          team,
+          totalPoints: 0,
+          activities: {},
+          elevation: 0,
+          elevationPoints: 0,
+        });
+      }
+      const individual = individualMap.get(athleteName)!;
+      individual.totalPoints += totalPoints;
+      individual.elevation += stravaActivity.total_elevation_gain || 0;
+      individual.elevationPoints += elevationPoints;
 
-    if (!individual.activities[normalizedType]) {
-      individual.activities[normalizedType] = { distance: 0, points: 0 };
-    }
-    individual.activities[normalizedType].distance += distanceKm;
-    individual.activities[normalizedType].points += activityPoints;
+      if (!individual.activities[normalizedType]) {
+        individual.activities[normalizedType] = { distance: 0, points: 0 };
+      }
+      individual.activities[normalizedType].distance += distanceKm;
+      individual.activities[normalizedType].points += activityPoints;
 
-    // Update daily tracker (skip if no date available)
-    if (dateStr !== 'Unknown') {
+      // Update daily tracker
       if (!dailyMap.has(dateStr)) {
         dailyMap.set(dateStr, { tempoTantrums: 0, pointsPints: 0 });
       }
