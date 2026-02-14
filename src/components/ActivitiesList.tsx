@@ -27,6 +27,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [teamFilter, setTeamFilter] = useState<string>('all');
+  const [athleteFilter, setAthleteFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState<string>('');
@@ -49,6 +50,15 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
   // Hardcoded team options
   const teams = ['all', 'Tempo Tantrums', 'Points & Pints'];
 
+  // Get unique athlete names for filter
+  const athletes = useMemo(() => {
+    const names = new Set<string>();
+    data.forEach((activity) => {
+      if (activity.athlete) names.add(activity.athlete);
+    });
+    return ['all', ...Array.from(names).sort()];
+  }, [data]);
+
   // Count activities needing dates
   const needingDates = useMemo(() => {
     return data.filter((a) => a.date === 'Unknown').length;
@@ -59,11 +69,12 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
     return data.filter((activity) => {
       if (typeFilter !== 'all' && activity.normalizedType !== typeFilter) return false;
       if (teamFilter !== 'all' && activity.team !== teamFilter) return false;
+      if (athleteFilter !== 'all' && activity.athlete !== athleteFilter) return false;
       if (dateFilter === 'needs-date' && activity.date !== 'Unknown') return false;
       if (dateFilter === 'has-date' && activity.date === 'Unknown') return false;
       return true;
     });
-  }, [data, typeFilter, teamFilter, dateFilter]);
+  }, [data, typeFilter, teamFilter, athleteFilter, dateFilter]);
 
   // Sort activities
   const sortedActivities = useMemo(() => {
@@ -273,6 +284,21 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
             {teams.map((team) => (
               <option key={team} value={team}>
                 {team === 'all' ? 'All Teams' : team}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Athlete</label>
+          <select
+            value={athleteFilter}
+            onChange={(e) => setAthleteFilter(e.target.value)}
+            className="bg-slate-800 text-white rounded-lg px-4 py-2 border border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
+          >
+            {athletes.map((athlete) => (
+              <option key={athlete} value={athlete}>
+                {athlete === 'all' ? 'All Athletes' : athlete}
               </option>
             ))}
           </select>
