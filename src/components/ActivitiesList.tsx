@@ -32,6 +32,11 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
   const [editDate, setEditDate] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDate, setBulkDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+
   // Get unique activity types for filter
   const activityTypes = useMemo(() => {
     const types = new Set<string>();
@@ -124,6 +129,61 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditDate('');
+  };
+
+  // Bulk selection handlers
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === sortedActivities.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedActivities.map((a) => a.id)));
+    }
+  };
+
+  const handleBulkSave = async () => {
+    if (selectedIds.size === 0 || !bulkDate) return;
+
+    setBulkSaving(true);
+    try {
+      const dates: Record<string, string> = {};
+      selectedIds.forEach((id) => {
+        dates[id] = bulkDate;
+      });
+
+      const response = await fetch('/api/dates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dates }),
+      });
+
+      if (response.ok) {
+        setSelectedIds(new Set());
+        if (onDateSaved) onDateSaved();
+      } else {
+        const error = await response.json();
+        alert('Failed to save: ' + (error.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Failed to save dates');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
   };
 
   const getTeamColor = (team: string) => {
@@ -235,6 +295,39 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
         </p>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-blue-500/20 border border-blue-500/50 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✓</span>
+            <p className="text-blue-400 font-medium">
+              {selectedIds.size} activit{selectedIds.size === 1 ? 'y' : 'ies'} selected
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              value={bulkDate}
+              onChange={(e) => setBulkDate(e.target.value)}
+              className="bg-slate-700 text-white rounded-lg px-3 py-2 border border-slate-600 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <button
+              onClick={handleBulkSave}
+              disabled={bulkSaving}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-500 transition-colors disabled:opacity-50"
+            >
+              {bulkSaving ? 'Saving...' : `Apply Date to ${selectedIds.size}`}
+            </button>
+            <button
+              onClick={handleClearSelection}
+              className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium hover:bg-slate-500 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-slate-800/50 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -258,6 +351,14 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                   </th>
                 ))}
                 <th className="text-left py-3 px-4 text-slate-300 font-medium">Team</th>
+                <th className="py-3 px-4 text-slate-300 font-medium text-center w-12">
+                  <input
+                    type="checkbox"
+                    checked={sortedActivities.length > 0 && selectedIds.size === sortedActivities.length}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -312,6 +413,14 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                   <td className="py-3 px-4 text-white font-medium">{activity.totalPoints}</td>
                   <td className={`py-3 px-4 ${getTeamColor(activity.team)}`}>
                     {activity.team || '-'}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(activity.id)}
+                      onChange={() => handleToggleSelect(activity.id)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                    />
                   </td>
                 </tr>
               ))}
