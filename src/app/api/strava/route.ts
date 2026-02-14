@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchAllClubActivities, getAthleteDisplayName, StravaActivity } from '@/lib/strava';
 import { calculatePoints, getActivityCategories } from '@/lib/points';
 import { getAthleteTeam, TEAMS, TeamName } from '@/lib/teams';
+import { getActivityDates } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -53,7 +54,7 @@ interface DashboardData {
   lastUpdated: string;
 }
 
-function processActivities(stravaActivities: StravaActivity[]): DashboardData {
+function processActivities(stravaActivities: StravaActivity[], storedDates: Record<number, string>): DashboardData {
   const activities: ProcessedActivity[] = [];
   const individualMap = new Map<string, IndividualStats>();
   const scoreboardMap = new Map<string, { tempoTantrums: number; pointsPints: number }>();
@@ -83,10 +84,10 @@ function processActivities(stravaActivities: StravaActivity[]): DashboardData {
     );
 
     const distanceKm = stravaActivity.distance / 1000;
-    // Club activities endpoint doesn't return dates, use activity index as fallback
-    const dateStr = stravaActivity.start_date_local
-      ? stravaActivity.start_date_local.split('T')[0]
-      : 'Unknown';
+    // Use stored date if available, otherwise try Strava date, otherwise Unknown
+    const dateStr = storedDates[stravaActivity.id]
+      || (stravaActivity.start_date_local ? stravaActivity.start_date_local.split('T')[0] : null)
+      || 'Unknown';
 
     // Create processed activity
     const processed: ProcessedActivity = {
@@ -216,10 +217,21 @@ function processActivities(stravaActivities: StravaActivity[]): DashboardData {
 
 export async function GET() {
   try {
-    const stravaActivities = await fetchAllClubActivities();
-    const dashboardData = processActivities(stravaActivities);
+    // Fetch activities and stored dates in parallel
+    const [stravaActivities, storedDates] = await Promise.all([
+      fetchAllClubActivities(),
+      getActivityDates(),
+    ]);
 
-    return NextResponse.json(dashboardData);
+    const dashboardData = processActivities(stravaActivities, storedDates);
+
+    // Add count of activities needing dates
+    const activitiesNeedingDates = dashboardData.activities.filter(a => a.date === 'Unknown').length;
+
+    return NextResponse.json({
+      ...dashboardData,
+      activitiesNeedingDates,
+    });
   } catch (error) {
     console.error('Error fetching Strava data:', error);
     return NextResponse.json(

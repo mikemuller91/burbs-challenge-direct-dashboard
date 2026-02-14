@@ -189,7 +189,7 @@ export default function Dashboard() {
               <IndividualsTable data={data.individuals} />
             )}
             {activeTab === 'activities' && (
-              <ActivitiesList data={data.activities} />
+              <ActivitiesList data={data.activities} onDateSaved={loadData} />
             )}
             {activeTab === 'tracker' && (
               <DailyTracker data={data.dailyTracker} totals={data.totals} />
