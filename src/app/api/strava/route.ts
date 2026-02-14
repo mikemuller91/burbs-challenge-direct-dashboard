@@ -247,8 +247,9 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
   }
 
   // Add elevation points (6 points per 1000m, floor of cumulative total)
-  const tempoElevationPoints = Math.floor((elevationTotals.tempoMeters / 1000) * ELEVATION_POINTS_PER_1000M);
-  const pintsElevationPoints = Math.floor((elevationTotals.pintsMeters / 1000) * ELEVATION_POINTS_PER_1000M);
+  // Elevation: 6 points per complete 1000m (e.g., 1455m = 1 complete 1000m = 6 points)
+  const tempoElevationPoints = Math.floor(elevationTotals.tempoMeters / 1000) * ELEVATION_POINTS_PER_1000M;
+  const pintsElevationPoints = Math.floor(elevationTotals.pintsMeters / 1000) * ELEVATION_POINTS_PER_1000M;
   if (tempoElevationPoints > 0 || pintsElevationPoints > 0) {
     scoreboard.push({
       activity: 'Elevation',

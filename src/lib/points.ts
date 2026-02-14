@@ -69,10 +69,11 @@ export function calculatePoints(
     }
   }
 
-  // Elevation points: 6 per 1000m, only for eligible activity types
+  // Elevation points: 6 per complete 1000m, only for eligible activity types
+  // e.g., 1455m = 1 complete 1000m = 6 points
   let elevationPoints = 0;
   if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
-    elevationPoints = Math.round((elevationGain / 1000) * ELEVATION_POINTS_PER_1000M);
+    elevationPoints = Math.floor(elevationGain / 1000) * ELEVATION_POINTS_PER_1000M;
   }
 
   return {
