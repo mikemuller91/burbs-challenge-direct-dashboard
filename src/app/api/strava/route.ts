@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchAllClubActivities, getAthleteDisplayName, StravaActivity } from '@/lib/strava';
 import { calculatePoints, getActivityCategories, POINTS_CONFIG, ELEVATION_ELIGIBLE_TYPES, ELEVATION_POINTS_PER_1000M } from '@/lib/points';
 import { getAthleteTeam, TEAMS, TeamName } from '@/lib/teams';
-import { getActivityDates } from '@/lib/db';
+import { getActivityDates, getStoredActivities, saveActivities, setLastSync, getLastSync, StoredActivity } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -42,6 +42,114 @@ function isFebruaryActivity(dateStr: string): boolean {
   if (dateStr === 'Unknown') return false;
   // Date format is YYYY-MM-DD
   return dateStr.startsWith('2026-02');
+}
+
+/**
+ * Convert a Strava activity to a StoredActivity
+ */
+function stravaToStoredActivity(
+  stravaActivity: StravaActivity,
+  activityId: string,
+  date: string
+): StoredActivity {
+  return {
+    id: activityId,
+    athleteFirstname: stravaActivity.athlete.firstname,
+    athleteLastname: stravaActivity.athlete.lastname,
+    name: stravaActivity.name,
+    type: stravaActivity.type,
+    sport_type: stravaActivity.sport_type,
+    distance: stravaActivity.distance,
+    total_elevation_gain: stravaActivity.total_elevation_gain,
+    date,
+    storedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Convert a StoredActivity back to StravaActivity format for processing
+ */
+function storedToStravaActivity(stored: StoredActivity): StravaActivity {
+  return {
+    id: 0, // Not used
+    athlete: {
+      firstname: stored.athleteFirstname,
+      lastname: stored.athleteLastname,
+    },
+    name: stored.name,
+    type: stored.type,
+    sport_type: stored.sport_type,
+    distance: stored.distance,
+    total_elevation_gain: stored.total_elevation_gain,
+    start_date: '',
+    start_date_local: stored.date !== 'Unknown' ? `${stored.date}T00:00:00Z` : '',
+    moving_time: 0,
+    elapsed_time: 0,
+  };
+}
+
+/**
+ * Sync activities from Strava and merge with stored activities
+ * Returns the merged list of all activities
+ */
+async function syncAndMergeActivities(storedDates: Record<string, string>): Promise<{
+  activities: StravaActivity[];
+  storedActivityMap: Map<string, StoredActivity>;
+  syncedCount: number;
+}> {
+  // Fetch from Strava
+  const stravaActivities = await fetchAllClubActivities();
+
+  // Get existing stored activities
+  const existingStored = await getStoredActivities();
+  const storedActivityMap = new Map<string, StoredActivity>();
+
+  // Index existing stored activities by ID
+  for (const stored of existingStored) {
+    storedActivityMap.set(stored.id, stored);
+  }
+
+  // Track used IDs for generating new IDs
+  const usedIds = new Map<string, number>();
+
+  // First pass: generate IDs for all Strava activities to detect duplicates
+  const stravaWithIds: { activity: StravaActivity; id: string }[] = [];
+  for (const activity of stravaActivities) {
+    const athleteName = getAthleteDisplayName(activity);
+    const id = generateActivityId(activity, athleteName, usedIds);
+    stravaWithIds.push({ activity, id });
+  }
+
+  // Convert new Strava activities to StoredActivity format
+  const newStoredActivities: StoredActivity[] = [];
+  for (const { activity, id } of stravaWithIds) {
+    // Get date from stored dates or Strava or Unknown
+    const existingStored = storedActivityMap.get(id);
+    const date = existingStored?.date
+      || storedDates[id]
+      || (activity.start_date_local ? activity.start_date_local.split('T')[0] : null)
+      || 'Unknown';
+
+    const storedActivity = stravaToStoredActivity(activity, id, date);
+    newStoredActivities.push(storedActivity);
+    storedActivityMap.set(id, storedActivity);
+  }
+
+  // Save merged activities
+  await saveActivities(newStoredActivities);
+  await setLastSync();
+
+  // Convert all stored activities to StravaActivity format for processing
+  const allActivities: StravaActivity[] = [];
+  for (const stored of storedActivityMap.values()) {
+    allActivities.push(storedToStravaActivity(stored));
+  }
+
+  return {
+    activities: allActivities,
+    storedActivityMap,
+    syncedCount: stravaActivities.length,
+  };
 }
 
 interface ProcessedActivity {
@@ -91,7 +199,7 @@ interface DashboardData {
   lastUpdated: string;
 }
 
-function processActivities(stravaActivities: StravaActivity[], storedDates: Record<string, string>): DashboardData {
+function processActivities(storedActivities: StoredActivity[]): DashboardData {
   const activities: ProcessedActivity[] = [];
   const individualMap = new Map<string, IndividualStats>();
   const dailyMap = new Map<string, { tempoTantrums: number; pointsPints: number }>();
@@ -108,12 +216,9 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     distanceMap.set(category, { tempoKm: 0, pintsKm: 0 });
   }
 
-  // Track used IDs to handle duplicates
-  const usedIds = new Map<string, number>();
-
-  // Process each activity
-  for (const stravaActivity of stravaActivities) {
-    const athleteName = getAthleteDisplayName(stravaActivity);
+  // Process each stored activity
+  for (const stored of storedActivities) {
+    const athleteName = `${stored.athleteFirstname} ${stored.athleteLastname ? stored.athleteLastname.charAt(0) + '.' : ''}`.trim();
     const team = getAthleteTeam(athleteName);
 
     if (!team) {
@@ -122,20 +227,16 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     }
 
     const { activityPoints, elevationPoints, totalPoints, normalizedType } = calculatePoints(
-      stravaActivity.sport_type || stravaActivity.type,
-      stravaActivity.distance || 0,
-      stravaActivity.total_elevation_gain || 0
+      stored.sport_type || stored.type,
+      stored.distance || 0,
+      stored.total_elevation_gain || 0
     );
 
-    const distanceKm = stravaActivity.distance / 1000;
+    const distanceKm = stored.distance / 1000;
 
-    // Generate a unique ID for this activity
-    const activityId = generateActivityId(stravaActivity, athleteName, usedIds);
-
-    // Use stored date if available, otherwise try Strava date, otherwise Unknown
-    const dateStr = storedDates[activityId]
-      || (stravaActivity.start_date_local ? stravaActivity.start_date_local.split('T')[0] : null)
-      || 'Unknown';
+    // Activity already has an ID and date from storage
+    const activityId = stored.id;
+    const dateStr = stored.date;
 
     // Create processed activity
     const processed: ProcessedActivity = {
@@ -143,14 +244,14 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
       date: dateStr,
       athlete: athleteName,
       team,
-      type: stravaActivity.sport_type || stravaActivity.type,
+      type: stored.sport_type || stored.type,
       normalizedType,
       distance: Math.round(distanceKm * 100) / 100,
-      elevation: Math.round(stravaActivity.total_elevation_gain),
+      elevation: Math.round(stored.total_elevation_gain || 0),
       points: activityPoints,
       elevationPoints,
       totalPoints,
-      title: stravaActivity.name,
+      title: stored.name,
     };
     activities.push(processed);
 
@@ -181,9 +282,9 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
       // Accumulate elevation (only for eligible types)
       if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
         if (team === TEAMS.TEMPO_TANTRUMS) {
-          elevationTotals.tempoMeters += stravaActivity.total_elevation_gain || 0;
+          elevationTotals.tempoMeters += stored.total_elevation_gain || 0;
         } else {
-          elevationTotals.pintsMeters += stravaActivity.total_elevation_gain || 0;
+          elevationTotals.pintsMeters += stored.total_elevation_gain || 0;
         }
       }
 
@@ -202,7 +303,7 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
       individual.totalPoints += totalPoints;
       // Only accumulate elevation from eligible activity types (Road Run, Trail Run, Cycle, MTB)
       if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
-        individual.elevation += stravaActivity.total_elevation_gain || 0;
+        individual.elevation += stored.total_elevation_gain || 0;
       }
       individual.elevationPoints += elevationPoints;
 
@@ -333,13 +434,18 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
 
 export async function GET() {
   try {
-    // Fetch activities and stored dates in parallel
-    const [stravaActivities, storedDates] = await Promise.all([
-      fetchAllClubActivities(),
-      getActivityDates(),
-    ]);
+    // Get stored dates for mapping
+    const storedDates = await getActivityDates();
 
-    const dashboardData = processActivities(stravaActivities, storedDates);
+    // Sync activities from Strava and merge with stored activities
+    const { storedActivityMap, syncedCount } = await syncAndMergeActivities(storedDates);
+
+    // Get last sync time
+    const lastSync = await getLastSync();
+
+    // Process all stored activities
+    const allStoredActivities = Array.from(storedActivityMap.values());
+    const dashboardData = processActivities(allStoredActivities);
 
     // Add count of activities needing dates
     const activitiesNeedingDates = dashboardData.activities.filter(a => a.date === 'Unknown').length;
@@ -347,6 +453,9 @@ export async function GET() {
     return NextResponse.json({
       ...dashboardData,
       activitiesNeedingDates,
+      totalStoredActivities: allStoredActivities.length,
+      lastSyncedFromStrava: syncedCount,
+      lastSync,
     });
   } catch (error) {
     console.error('Error fetching Strava data:', error);

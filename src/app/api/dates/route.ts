@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getActivityDates, saveActivityDate, saveActivityDates } from '@/lib/db';
+import { getActivityDates, saveActivityDate, saveActivityDates, updateStoredActivityDate, getStoredActivities, saveActivities } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +27,18 @@ export async function POST(request: Request) {
       if (!success) {
         return NextResponse.json({ error: 'Failed to save dates' }, { status: 500 });
       }
+
+      // Also update stored activities with new dates
+      const storedActivities = await getStoredActivities();
+      const updatedActivities = storedActivities.map(activity => {
+        const newDate = body.dates[activity.id];
+        if (newDate) {
+          return { ...activity, date: newDate };
+        }
+        return activity;
+      });
+      await saveActivities(updatedActivities);
+
       return NextResponse.json({ success: true, count: Object.keys(body.dates).length });
     }
 
@@ -48,9 +60,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const success = await saveActivityDate(activityId, date);
+    // Save to both the dates store and update the stored activity
+    const [dateSuccess, activitySuccess] = await Promise.all([
+      saveActivityDate(activityId, date),
+      updateStoredActivityDate(activityId, date),
+    ]);
 
-    if (!success) {
+    if (!dateSuccess) {
       return NextResponse.json({ error: 'Failed to save date' }, { status: 500 });
     }
 
