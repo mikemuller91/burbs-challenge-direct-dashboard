@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 
 interface ProcessedActivity {
-  id: number;
+  id: string;
   date: string;
   athlete: string;
   team: string;
@@ -28,7 +28,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [teamFilter, setTeamFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState<string>('');
   const [saving, setSaving] = useState(false);
 

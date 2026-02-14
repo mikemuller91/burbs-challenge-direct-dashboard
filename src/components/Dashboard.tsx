@@ -15,7 +15,7 @@ interface TeamScore {
 }
 
 interface ProcessedActivity {
-  id: number;
+  id: string;
   date: string;
   athlete: string;
   team: string;

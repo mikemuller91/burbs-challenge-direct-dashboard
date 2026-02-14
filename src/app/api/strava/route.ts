@@ -7,8 +7,24 @@ import { getActivityDates } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+/**
+ * Generate a unique ID for an activity based on its properties
+ * Since Strava Club Activities API doesn't return activity IDs
+ */
+function generateActivityId(activity: StravaActivity, athleteName: string): string {
+  const str = `${athleteName}|${activity.name}|${activity.distance}|${activity.sport_type || activity.type}`;
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString();
+}
+
 interface ProcessedActivity {
-  id: number;
+  id: string;
   date: string;
   athlete: string;
   team: string;
@@ -54,7 +70,7 @@ interface DashboardData {
   lastUpdated: string;
 }
 
-function processActivities(stravaActivities: StravaActivity[], storedDates: Record<number, string>): DashboardData {
+function processActivities(stravaActivities: StravaActivity[], storedDates: Record<string, string>): DashboardData {
   const activities: ProcessedActivity[] = [];
   const individualMap = new Map<string, IndividualStats>();
   const scoreboardMap = new Map<string, { tempoTantrums: number; pointsPints: number }>();
@@ -84,14 +100,18 @@ function processActivities(stravaActivities: StravaActivity[], storedDates: Reco
     );
 
     const distanceKm = stravaActivity.distance / 1000;
+
+    // Generate a unique ID for this activity
+    const activityId = generateActivityId(stravaActivity, athleteName);
+
     // Use stored date if available, otherwise try Strava date, otherwise Unknown
-    const dateStr = storedDates[stravaActivity.id]
+    const dateStr = storedDates[activityId]
       || (stravaActivity.start_date_local ? stravaActivity.start_date_local.split('T')[0] : null)
       || 'Unknown';
 
     // Create processed activity
     const processed: ProcessedActivity = {
-      id: stravaActivity.id,
+      id: activityId,
       date: dateStr,
       athlete: athleteName,
       team,

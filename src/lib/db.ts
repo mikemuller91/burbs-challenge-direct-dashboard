@@ -10,7 +10,7 @@ const redis = new Redis({
 const ACTIVITY_DATES_KEY = 'activity_dates';
 
 export interface ActivityDate {
-  activityId: number;
+  activityId: string;
   date: string; // YYYY-MM-DD format
   updatedAt: string;
 }
@@ -18,15 +18,15 @@ export interface ActivityDate {
 /**
  * Get all stored activity dates
  */
-export async function getActivityDates(): Promise<Record<number, string>> {
+export async function getActivityDates(): Promise<Record<string, string>> {
   try {
     const data = await redis.hgetall(ACTIVITY_DATES_KEY);
     if (!data) return {};
 
     // Convert to proper format
-    const result: Record<number, string> = {};
+    const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(data)) {
-      result[parseInt(key)] = value as string;
+      result[key] = value as string;
     }
     return result;
   } catch (error) {
@@ -38,9 +38,9 @@ export async function getActivityDates(): Promise<Record<number, string>> {
 /**
  * Save a date for an activity
  */
-export async function saveActivityDate(activityId: number, date: string): Promise<boolean> {
+export async function saveActivityDate(activityId: string, date: string): Promise<boolean> {
   try {
-    await redis.hset(ACTIVITY_DATES_KEY, { [activityId.toString()]: date });
+    await redis.hset(ACTIVITY_DATES_KEY, { [activityId]: date });
     return true;
   } catch (error) {
     console.error('Error saving activity date:', error);
@@ -51,15 +51,11 @@ export async function saveActivityDate(activityId: number, date: string): Promis
 /**
  * Save multiple activity dates at once
  */
-export async function saveActivityDates(dates: Record<number, string>): Promise<boolean> {
+export async function saveActivityDates(dates: Record<string, string>): Promise<boolean> {
   try {
     if (Object.keys(dates).length === 0) return true;
 
-    const data: Record<string, string> = {};
-    for (const [id, date] of Object.entries(dates)) {
-      data[id] = date;
-    }
-    await redis.hset(ACTIVITY_DATES_KEY, data);
+    await redis.hset(ACTIVITY_DATES_KEY, dates);
     return true;
   } catch (error) {
     console.error('Error saving activity dates:', error);
@@ -70,9 +66,9 @@ export async function saveActivityDates(dates: Record<number, string>): Promise<
 /**
  * Delete a date for an activity
  */
-export async function deleteActivityDate(activityId: number): Promise<boolean> {
+export async function deleteActivityDate(activityId: string): Promise<boolean> {
   try {
-    await redis.hdel(ACTIVITY_DATES_KEY, activityId.toString());
+    await redis.hdel(ACTIVITY_DATES_KEY, activityId);
     return true;
   } catch (error) {
     console.error('Error deleting activity date:', error);
