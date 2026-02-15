@@ -25,7 +25,7 @@ export const POINTS_CONFIG: Record<string, { perKm?: number; perWorkout?: number
   'Trail Run': { perKm: 1.1 },
   'Cycle': { perKm: 0.25 },
   'MTB': { perKm: 0.4 },
-  'Swim': { perKm: 4 },
+  'Swim': { perKm: 4.2 },
   'Workout': { perWorkout: 6 },
   'Paddle Ski': { perKm: 1 },
 };
