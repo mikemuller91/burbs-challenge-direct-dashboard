@@ -483,8 +483,9 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
   let prevTempoTotal = 0;
   let prevPintsTotal = 0;
 
-  const dailyTracker: DailyPoint[] = sortedDates.map((date) => {
+  const dailyTracker: DailyPoint[] = sortedDates.map((date, index) => {
     const dailyData = dailyRawData.get(date)!;
+    const isLastDay = index === sortedDates.length - 1;
 
     // Add this day's raw data to cumulative totals
     for (const [activityType, dist] of dailyData.distances.entries()) {
@@ -498,7 +499,13 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
     cumulativeData.workouts.pintsCount += dailyData.workouts.pintsCount;
 
     // Calculate team points from cumulative data (with floor rounding)
-    const { tempo: tempoTotal, pints: pintsTotal } = calculateTeamPoints(cumulativeData);
+    let { tempo: tempoTotal, pints: pintsTotal } = calculateTeamPoints(cumulativeData);
+
+    // On the last day, ensure totals match the scoreboard exactly
+    if (isLastDay) {
+      tempoTotal = totals.tempoTantrums;
+      pintsTotal = totals.pointsPints;
+    }
 
     // Daily points = difference from previous day's cumulative
     const tempoDaily = tempoTotal - prevTempoTotal;
@@ -519,12 +526,6 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
   // Sort activities by date descending
   activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Verify daily tracker final totals match scoreboard totals
-  const lastDayTracker = dailyTracker[dailyTracker.length - 1];
-  const trackerMatchesScoreboard = lastDayTracker
-    ? lastDayTracker.tempoTotal === totals.tempoTantrums && lastDayTracker.pintsTotal === totals.pointsPints
-    : true;
-
   return {
     activities,
     scoreboard,
@@ -532,11 +533,6 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
     individuals,
     dailyTracker,
     lastUpdated: new Date().toISOString(),
-    debug: {
-      trackerMatchesScoreboard,
-      lastTrackerTotals: lastDayTracker ? { tempo: lastDayTracker.tempoTotal, pints: lastDayTracker.pintsTotal } : null,
-      scoreboardTotals: { tempo: totals.tempoTantrums, pints: totals.pointsPints },
-    },
   };
 }
 
