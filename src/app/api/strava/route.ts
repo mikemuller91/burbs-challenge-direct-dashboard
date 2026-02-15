@@ -205,38 +205,6 @@ interface DashboardData {
   lastUpdated: string;
 }
 
-// Structure to track cumulative raw values (before floor rounding)
-interface DailyCumulativeData {
-  distances: Map<string, { tempoKm: number; pintsKm: number }>;
-  elevation: { tempoMeters: number; pintsMeters: number };
-  workouts: { tempoCount: number; pintsCount: number };
-}
-
-// Calculate team points from cumulative data
-function calculateTeamPoints(data: DailyCumulativeData): { tempo: number; pints: number } {
-  let tempoPoints = 0;
-  let pintsPoints = 0;
-
-  // Distance-based points
-  for (const [activityType, distances] of data.distances.entries()) {
-    const config = POINTS_CONFIG[activityType];
-    if (config?.perKm) {
-      tempoPoints += Math.floor(distances.tempoKm * config.perKm);
-      pintsPoints += Math.floor(distances.pintsKm * config.perKm);
-    }
-  }
-
-  // Workout points
-  tempoPoints += data.workouts.tempoCount * 6;
-  pintsPoints += data.workouts.pintsCount * 6;
-
-  // Elevation points
-  tempoPoints += Math.floor(data.elevation.tempoMeters / 1000) * ELEVATION_POINTS_PER_1000M;
-  pintsPoints += Math.floor(data.elevation.pintsMeters / 1000) * ELEVATION_POINTS_PER_1000M;
-
-  return { tempo: tempoPoints, pints: pintsPoints };
-}
-
 function processActivities(storedActivities: StoredActivity[]): DashboardData {
   const activities: ProcessedActivity[] = [];
   const individualMap = new Map<string, IndividualStats>();
@@ -247,13 +215,6 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
   const elevationTotals = { tempoMeters: 0, pintsMeters: 0 };
   // Track workout counts by team
   const workoutCounts = { tempoCount: 0, pintsCount: 0 };
-
-  // For daily tracker: track raw cumulative data per date
-  const dailyRawData = new Map<string, {
-    distances: Map<string, { tempoKm: number; pintsKm: number }>;
-    elevation: { tempoMeters: number; pintsMeters: number };
-    workouts: { tempoCount: number; pintsCount: number };
-  }>();
 
   // Initialize distance map with all activity categories
   for (const category of getActivityCategories()) {
@@ -356,41 +317,6 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
       }
       individual.activities[normalizedType].distance += distanceKm;
       individual.activities[normalizedType].points += activityPoints;
-
-      // Track raw data for daily tracker (will calculate points from cumulative values)
-      if (!dailyRawData.has(dateStr)) {
-        dailyRawData.set(dateStr, {
-          distances: new Map(getActivityCategories().map(cat => [cat, { tempoKm: 0, pintsKm: 0 }])),
-          elevation: { tempoMeters: 0, pintsMeters: 0 },
-          workouts: { tempoCount: 0, pintsCount: 0 },
-        });
-      }
-      const dailyData = dailyRawData.get(dateStr)!;
-
-      if (normalizedType === 'Other') {
-        // Don't track
-      } else if (normalizedType === 'Workout') {
-        if (team === TEAMS.TEMPO_TANTRUMS) {
-          dailyData.workouts.tempoCount += 1;
-        } else {
-          dailyData.workouts.pintsCount += 1;
-        }
-      } else if (dailyData.distances.has(normalizedType)) {
-        const dist = dailyData.distances.get(normalizedType)!;
-        if (team === TEAMS.TEMPO_TANTRUMS) {
-          dist.tempoKm += distanceKm;
-        } else {
-          dist.pintsKm += distanceKm;
-        }
-      }
-
-      if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
-        if (team === TEAMS.TEMPO_TANTRUMS) {
-          dailyData.elevation.tempoMeters += stored.total_elevation_gain || 0;
-        } else {
-          dailyData.elevation.pintsMeters += stored.total_elevation_gain || 0;
-        }
-      }
     }
   }
 
@@ -470,44 +396,93 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
 
-  // Convert daily tracker using cumulative values with proper floor rounding
-  const sortedDates = Array.from(dailyRawData.keys()).sort();
+  // Build daily tracker by processing activities in date order
+  // This ensures cumulative calculations (especially elevation) match the scoreboard exactly
 
-  // Running cumulative data
-  const cumulativeData: DailyCumulativeData = {
-    distances: new Map(getActivityCategories().map(cat => [cat, { tempoKm: 0, pintsKm: 0 }])),
-    elevation: { tempoMeters: 0, pintsMeters: 0 },
-    workouts: { tempoCount: 0, pintsCount: 0 },
-  };
+  // Group February activities by date
+  const activitiesByDate = new Map<string, typeof activities>();
+  for (const activity of activities) {
+    if (!activity.date.startsWith('2026-02')) continue;
+    if (!activitiesByDate.has(activity.date)) {
+      activitiesByDate.set(activity.date, []);
+    }
+    activitiesByDate.get(activity.date)!.push(activity);
+  }
+
+  // Sort dates
+  const sortedDates = Array.from(activitiesByDate.keys()).sort();
+
+  // Track cumulative values exactly like the scoreboard does
+  const cumDistances = new Map<string, { tempoKm: number; pintsKm: number }>();
+  for (const category of getActivityCategories()) {
+    cumDistances.set(category, { tempoKm: 0, pintsKm: 0 });
+  }
+  const cumElevation = { tempoMeters: 0, pintsMeters: 0 };
+  const cumWorkouts = { tempoCount: 0, pintsCount: 0 };
 
   let prevTempoTotal = 0;
   let prevPintsTotal = 0;
 
-  const dailyTracker: DailyPoint[] = sortedDates.map((date, index) => {
-    const dailyData = dailyRawData.get(date)!;
-    const isLastDay = index === sortedDates.length - 1;
+  const dailyTracker: DailyPoint[] = sortedDates.map((date) => {
+    const dayActivities = activitiesByDate.get(date) || [];
 
-    // Add this day's raw data to cumulative totals
-    for (const [activityType, dist] of dailyData.distances.entries()) {
-      const cumDist = cumulativeData.distances.get(activityType)!;
-      cumDist.tempoKm += dist.tempoKm;
-      cumDist.pintsKm += dist.pintsKm;
+    // Process each activity for this day
+    for (const activity of dayActivities) {
+      const team = activity.team;
+      const normalizedType = activity.normalizedType;
+      const distanceKm = activity.distance;
+      const elevation = activity.elevation;
+
+      // Skip "Other" activities
+      if (normalizedType === 'Other') continue;
+
+      if (normalizedType === 'Workout') {
+        if (team === TEAMS.TEMPO_TANTRUMS) {
+          cumWorkouts.tempoCount += 1;
+        } else {
+          cumWorkouts.pintsCount += 1;
+        }
+      } else if (cumDistances.has(normalizedType)) {
+        const dist = cumDistances.get(normalizedType)!;
+        if (team === TEAMS.TEMPO_TANTRUMS) {
+          dist.tempoKm += distanceKm;
+        } else {
+          dist.pintsKm += distanceKm;
+        }
+      }
+
+      // Accumulate elevation for eligible types
+      if (ELEVATION_ELIGIBLE_TYPES.includes(normalizedType)) {
+        if (team === TEAMS.TEMPO_TANTRUMS) {
+          cumElevation.tempoMeters += elevation;
+        } else {
+          cumElevation.pintsMeters += elevation;
+        }
+      }
     }
-    cumulativeData.elevation.tempoMeters += dailyData.elevation.tempoMeters;
-    cumulativeData.elevation.pintsMeters += dailyData.elevation.pintsMeters;
-    cumulativeData.workouts.tempoCount += dailyData.workouts.tempoCount;
-    cumulativeData.workouts.pintsCount += dailyData.workouts.pintsCount;
 
-    // Calculate team points from cumulative data (with floor rounding)
-    let { tempo: tempoTotal, pints: pintsTotal } = calculateTeamPoints(cumulativeData);
+    // Calculate team points from cumulative data (same formula as scoreboard)
+    let tempoTotal = 0;
+    let pintsTotal = 0;
 
-    // On the last day, ensure totals match the scoreboard exactly
-    if (isLastDay) {
-      tempoTotal = totals.tempoTantrums;
-      pintsTotal = totals.pointsPints;
+    // Distance points
+    for (const [activityType, distances] of cumDistances.entries()) {
+      const config = POINTS_CONFIG[activityType];
+      if (config?.perKm) {
+        tempoTotal += Math.floor(distances.tempoKm * config.perKm);
+        pintsTotal += Math.floor(distances.pintsKm * config.perKm);
+      }
     }
 
-    // Daily points = difference from previous day's cumulative
+    // Workout points
+    tempoTotal += cumWorkouts.tempoCount * 6;
+    pintsTotal += cumWorkouts.pintsCount * 6;
+
+    // Elevation points
+    tempoTotal += Math.floor(cumElevation.tempoMeters / 1000) * ELEVATION_POINTS_PER_1000M;
+    pintsTotal += Math.floor(cumElevation.pintsMeters / 1000) * ELEVATION_POINTS_PER_1000M;
+
+    // Daily points = difference from previous day
     const tempoDaily = tempoTotal - prevTempoTotal;
     const pintsDaily = pintsTotal - prevPintsTotal;
 
