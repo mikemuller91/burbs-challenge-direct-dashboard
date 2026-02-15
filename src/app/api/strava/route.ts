@@ -396,7 +396,7 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
 
-  // Historical daily tracker data (verified correct values for Feb 1-15, 2026)
+  // Historical daily tracker data (verified correct values for Feb 1-14, 2026)
   // Format: { date: { tempoTotal, pintsTotal, tempoDaily, pintsDaily } }
   const historicalData: Record<string, { tempoTotal: number; pintsTotal: number; tempoDaily: number; pintsDaily: number }> = {
     '2026-02-01': { tempoTotal: 93, pintsTotal: 73, tempoDaily: 93, pintsDaily: 73 },
@@ -413,11 +413,10 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
     '2026-02-12': { tempoTotal: 626, pintsTotal: 542, tempoDaily: 30, pintsDaily: 33 },
     '2026-02-13': { tempoTotal: 656, pintsTotal: 568, tempoDaily: 30, pintsDaily: 26 },
     '2026-02-14': { tempoTotal: 770, pintsTotal: 647, tempoDaily: 114, pintsDaily: 79 },
-    '2026-02-15': { tempoTotal: 814, pintsTotal: 766, tempoDaily: 44, pintsDaily: 119 },
   };
 
   // Last historical date and its totals (baseline for future calculations)
-  const lastHistoricalDate = '2026-02-15';
+  const lastHistoricalDate = '2026-02-14';
   const lastHistoricalTotals = historicalData[lastHistoricalDate];
 
   // Group February activities by date (for dates after historical data)
