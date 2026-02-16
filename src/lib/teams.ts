@@ -29,6 +29,7 @@ export const ATHLETE_TEAMS: Record<string, TeamName> = {
   'ad s.': TEAMS.POINTS_PINTS,
   'geoffrey w.': TEAMS.POINTS_PINTS,
   'graeme b.': TEAMS.POINTS_PINTS,
+  'chris g.': TEAMS.POINTS_PINTS,
 };
 
 // Get team for an athlete name (case-insensitive)
