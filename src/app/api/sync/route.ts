@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchAllClubActivities, getAthleteDisplayName, StravaActivity } from '@/lib/strava';
-import { getActivityDates, getStoredActivities, saveActivities, setLastSync, getLastSync, StoredActivity } from '@/lib/db';
+import { getActivityDates, getStoredActivities, saveActivities, setLastSync, getLastSync, StoredActivity, removeActivitiesByIds } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,6 +27,15 @@ function generateActivityId(
   const count = usedIds.get(baseId) || 0;
   usedIds.set(baseId, count + 1);
   return count === 0 ? baseId : `${baseId}_${count}`;
+}
+
+/**
+ * Create a key for duplicate detection based on athlete + distance + date
+ */
+function createDuplicateKey(athleteFirstname: string, athleteLastname: string, distance: number, date: string): string {
+  const athleteName = `${athleteFirstname} ${athleteLastname}`.trim().toLowerCase();
+  const roundedDistance = Math.round(distance);
+  return `${athleteName}|${roundedDistance}|${date}`;
 }
 
 /**
@@ -89,6 +98,7 @@ export async function GET(request: Request) {
 
     // Convert new Strava activities to StoredActivity format
     const newStoredActivities: StoredActivity[] = [];
+    const newActivitiesByDupeKey = new Map<string, StoredActivity>();
     let newCount = 0;
 
     for (const activity of stravaActivities) {
@@ -96,22 +106,62 @@ export async function GET(request: Request) {
       const id = generateActivityId(activity, athleteName, usedIds);
 
       // Check if we already have this activity
-      const existingStored = storedActivityMap.get(id);
+      const existingStoredById = storedActivityMap.get(id);
 
       // Get date from existing stored activity, or stored dates, or Strava, or Unknown
-      const date = existingStored?.date
+      const date = existingStoredById?.date
         || storedDates[id]
         || (activity.start_date_local ? activity.start_date_local.split('T')[0] : null)
         || 'Unknown';
 
       const storedActivity = stravaToStoredActivity(activity, id, date);
 
-      if (!existingStored) {
+      if (!existingStoredById) {
         newCount++;
       }
 
       newStoredActivities.push(storedActivity);
       storedActivityMap.set(id, storedActivity);
+
+      // Track by duplicate key (athlete + distance + date)
+      if (date !== 'Unknown') {
+        const dupeKey = createDuplicateKey(
+          storedActivity.athleteFirstname,
+          storedActivity.athleteLastname,
+          storedActivity.distance,
+          date
+        );
+        newActivitiesByDupeKey.set(dupeKey, storedActivity);
+      }
+    }
+
+    // Detect duplicates: find old stored activities that match new ones by athlete+distance+date but have different IDs
+    const duplicateIdsToRemove: string[] = [];
+
+    for (const stored of existingStored) {
+      if (stored.date === 'Unknown') continue;
+
+      const dupeKey = createDuplicateKey(
+        stored.athleteFirstname,
+        stored.athleteLastname,
+        stored.distance,
+        stored.date
+      );
+
+      const matchingNewActivity = newActivitiesByDupeKey.get(dupeKey);
+
+      // If there's a matching new activity with a different ID, the old one is a duplicate
+      if (matchingNewActivity && matchingNewActivity.id !== stored.id) {
+        console.log(`Detected duplicate: old="${stored.id}" (${stored.sport_type}) -> new="${matchingNewActivity.id}" (${matchingNewActivity.sport_type})`);
+        duplicateIdsToRemove.push(stored.id);
+        storedActivityMap.delete(stored.id);
+      }
+    }
+
+    // Remove duplicates from storage
+    if (duplicateIdsToRemove.length > 0) {
+      await removeActivitiesByIds(duplicateIdsToRemove);
+      console.log(`Removed ${duplicateIdsToRemove.length} duplicate activities`);
     }
 
     // Save all activities
@@ -131,6 +181,7 @@ export async function GET(request: Request) {
         newActivities: newCount,
         previouslyStored: existingCount,
         totalStored: totalCount,
+        duplicatesRemoved: duplicateIdsToRemove.length,
         lastSync,
       },
     });

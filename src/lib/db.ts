@@ -156,6 +156,27 @@ export async function updateStoredActivityDate(activityId: string, date: string)
 }
 
 /**
+ * Remove activities by their IDs
+ */
+export async function removeActivitiesByIds(idsToRemove: string[]): Promise<boolean> {
+  try {
+    if (idsToRemove.length === 0) return true;
+
+    const activities = await getStoredActivities();
+    const idsSet = new Set(idsToRemove);
+    const filtered = activities.filter(a => !idsSet.has(a.id));
+
+    await redis.set(STORED_ACTIVITIES_KEY, filtered);
+
+    console.log(`Removed ${idsToRemove.length} duplicate activities`);
+    return true;
+  } catch (error) {
+    console.error('Error removing activities:', error);
+    return false;
+  }
+}
+
+/**
  * Get the last sync timestamp
  */
 export async function getLastSync(): Promise<string | null> {

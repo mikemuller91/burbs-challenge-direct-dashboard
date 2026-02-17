@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchAllClubActivities, getAthleteDisplayName, StravaActivity } from '@/lib/strava';
 import { calculatePoints, getActivityCategories, POINTS_CONFIG, ELEVATION_ELIGIBLE_TYPES, ELEVATION_POINTS_PER_1000M } from '@/lib/points';
 import { getAthleteTeam, TEAMS, TeamName } from '@/lib/teams';
-import { getActivityDates, getStoredActivities, saveActivities, setLastSync, getLastSync, StoredActivity } from '@/lib/db';
+import { getActivityDates, getStoredActivities, saveActivities, setLastSync, getLastSync, StoredActivity, removeActivitiesByIds } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -89,6 +89,16 @@ function storedToStravaActivity(stored: StoredActivity): StravaActivity {
 }
 
 /**
+ * Create a key for duplicate detection based on athlete + distance + date
+ * Distance is rounded to nearest meter to handle floating point differences
+ */
+function createDuplicateKey(athleteFirstname: string, athleteLastname: string, distance: number, date: string): string {
+  const athleteName = `${athleteFirstname} ${athleteLastname}`.trim().toLowerCase();
+  const roundedDistance = Math.round(distance);
+  return `${athleteName}|${roundedDistance}|${date}`;
+}
+
+/**
  * Sync activities from Strava and merge with stored activities
  * Returns the merged list of all activities
  */
@@ -96,6 +106,7 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
   activities: StravaActivity[];
   storedActivityMap: Map<string, StoredActivity>;
   syncedCount: number;
+  duplicatesRemoved: number;
 }> {
   // Fetch from Strava
   const stravaActivities = await fetchAllClubActivities();
@@ -128,6 +139,10 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
 
   // Convert new Strava activities to StoredActivity format
   const newStoredActivities: StoredActivity[] = [];
+
+  // Build a map of new activities by duplicate key for detection
+  const newActivitiesByDupeKey = new Map<string, StoredActivity>();
+
   for (const { activity, id } of stravaWithIds) {
     // Get date: prefer manual date, then existing stored date, then Strava, then Unknown
     const existingStored = storedActivityMap.get(id);
@@ -139,6 +154,46 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
     const storedActivity = stravaToStoredActivity(activity, id, date);
     newStoredActivities.push(storedActivity);
     storedActivityMap.set(id, storedActivity);
+
+    // Track by duplicate key (athlete + distance + date)
+    if (date !== 'Unknown') {
+      const dupeKey = createDuplicateKey(
+        storedActivity.athleteFirstname,
+        storedActivity.athleteLastname,
+        storedActivity.distance,
+        date
+      );
+      newActivitiesByDupeKey.set(dupeKey, storedActivity);
+    }
+  }
+
+  // Detect duplicates: find old stored activities that match new ones by athlete+distance+date but have different IDs
+  const duplicateIdsToRemove: string[] = [];
+
+  for (const stored of existingStored) {
+    if (stored.date === 'Unknown') continue;
+
+    const dupeKey = createDuplicateKey(
+      stored.athleteFirstname,
+      stored.athleteLastname,
+      stored.distance,
+      stored.date
+    );
+
+    const matchingNewActivity = newActivitiesByDupeKey.get(dupeKey);
+
+    // If there's a matching new activity with a different ID, the old one is a duplicate
+    if (matchingNewActivity && matchingNewActivity.id !== stored.id) {
+      console.log(`Detected duplicate: old="${stored.id}" (${stored.sport_type}) -> new="${matchingNewActivity.id}" (${matchingNewActivity.sport_type}) for ${stored.athleteFirstname} ${stored.athleteLastname}`);
+      duplicateIdsToRemove.push(stored.id);
+      // Remove from the map so it doesn't appear in results
+      storedActivityMap.delete(stored.id);
+    }
+  }
+
+  // Remove duplicates from storage
+  if (duplicateIdsToRemove.length > 0) {
+    await removeActivitiesByIds(duplicateIdsToRemove);
   }
 
   // Save merged activities (this updates all activities with correct dates)
@@ -155,6 +210,7 @@ async function syncAndMergeActivities(storedDates: Record<string, string>): Prom
     activities: allActivities,
     storedActivityMap,
     syncedCount: stravaActivities.length,
+    duplicatesRemoved: duplicateIdsToRemove.length,
   };
 }
 
@@ -506,7 +562,7 @@ export async function GET() {
     const storedDates = await getActivityDates();
 
     // Sync activities from Strava and merge with stored activities
-    const { storedActivityMap, syncedCount } = await syncAndMergeActivities(storedDates);
+    const { storedActivityMap, syncedCount, duplicatesRemoved } = await syncAndMergeActivities(storedDates);
 
     // Get last sync time
     const lastSync = await getLastSync();
@@ -523,6 +579,7 @@ export async function GET() {
       activitiesNeedingDates,
       totalStoredActivities: allStoredActivities.length,
       lastSyncedFromStrava: syncedCount,
+      duplicatesRemoved,
       lastSync,
     });
   } catch (error) {
