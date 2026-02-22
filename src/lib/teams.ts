@@ -19,6 +19,7 @@ export const ATHLETE_TEAMS: Record<string, TeamName> = {
   'robbie t.': TEAMS.TEMPO_TANTRUMS,
   'steven h.': TEAMS.TEMPO_TANTRUMS,
   'keith s.': TEAMS.TEMPO_TANTRUMS,
+  'martin v.': TEAMS.TEMPO_TANTRUMS,
 
   // Points & Pints
   'pierre c.': TEAMS.POINTS_PINTS,
