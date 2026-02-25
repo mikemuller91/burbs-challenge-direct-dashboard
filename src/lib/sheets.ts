@@ -33,6 +33,11 @@ export interface TeamScore {
   activity: string;
   tempoTantrums: number;
   pointsPints: number;
+  // Distance in km (or count for workouts)
+  tempoTantrumsDistance?: number;
+  pointsPintsDistance?: number;
+  // Unit for display (km, workouts, etc.)
+  unit?: string;
 }
 
 export interface Activity {
@@ -56,6 +61,9 @@ export interface DailyPoint {
 export function parseScoreboard(data: string[][]): TeamScore[] {
   const scores: TeamScore[] = [];
   let lastActivityName = '';
+  let lastUnit = '';
+  let lastTempoDistance = 0;
+  let lastPintsDistance = 0;
 
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
@@ -63,8 +71,16 @@ export function parseScoreboard(data: string[][]): TeamScore[] {
     // Track the activity name from rows that have values but don't end in "Pnts"
     // These are the raw data rows (e.g., "Road Run (km)", "Paddle Ski")
     if (row[1] && !row[1].includes('Pnts') && !row[1].includes('Total') && row[1].trim() !== '') {
+      // Extract unit from parentheses if present
+      const unitMatch = row[1].match(/\(([^)]+)\)/);
+      lastUnit = unitMatch ? unitMatch[1] : '';
+
       // Extract activity name, removing any units like "(km)" or "(m)"
       lastActivityName = row[1].replace(/\s*\([^)]*\)\s*/g, '').trim();
+
+      // Capture distance/count values from this row
+      lastTempoDistance = parseFloat(row[2]) || 0;
+      lastPintsDistance = parseFloat(row[3]) || 0;
     }
 
     // When we find a "Pnts" row, use the last activity name we tracked
@@ -76,10 +92,21 @@ export function parseScoreboard(data: string[][]): TeamScore[] {
         // Check if we already have this activity (avoid duplicates)
         const existingIndex = scores.findIndex(s => s.activity === lastActivityName);
         if (existingIndex === -1) {
+          // Determine the unit to display
+          let displayUnit = lastUnit;
+          if (lastActivityName === 'Workout' || lastActivityName === 'Other') {
+            displayUnit = 'workouts';
+          } else if (!displayUnit) {
+            displayUnit = 'km';
+          }
+
           scores.push({
             activity: lastActivityName,
             tempoTantrums,
             pointsPints,
+            tempoTantrumsDistance: lastTempoDistance,
+            pointsPintsDistance: lastPintsDistance,
+            unit: displayUnit,
           });
         }
       }

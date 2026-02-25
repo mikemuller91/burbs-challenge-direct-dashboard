@@ -11,7 +11,50 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  TooltipProps,
 } from 'recharts';
+
+// Custom tooltip to show both points and distance
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  // Get the full data object from the payload
+  const data = payload[0]?.payload as TeamScore;
+
+  return (
+    <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-lg">
+      <p className="text-white font-semibold mb-2">{label}</p>
+      {payload.map((entry, index) => {
+        const isTempoTantrums = entry.dataKey === 'tempoTantrums';
+        const distance = isTempoTantrums ? data.tempoTantrumsDistance : data.pointsPintsDistance;
+        const unit = data.unit || 'km';
+        const isWorkout = unit === 'workouts';
+
+        return (
+          <div key={index} className="flex flex-col mb-1">
+            <div className="flex items-center gap-2">
+              <span
+                className="w-3 h-3 rounded-sm"
+                style={{ backgroundColor: entry.color }}
+              />
+              <span className="text-slate-300">{entry.name}:</span>
+              <span className="text-white font-medium">{entry.value} pts</span>
+            </div>
+            {distance !== undefined && distance > 0 && (
+              <div className="ml-5 text-slate-400 text-sm">
+                {isWorkout
+                  ? `${distance} ${distance === 1 ? 'workout' : 'workouts'}`
+                  : `${distance.toFixed(1)} ${unit}`}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 interface Props {
   scores: TeamScore[];
@@ -90,10 +133,7 @@ export default function TeamScoreboard({ scores, totals }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis type="number" stroke="#9ca3af" />
               <YAxis dataKey="activity" type="category" stroke="#9ca3af" width={100} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
-                labelStyle={{ color: '#fff' }}
-              />
+              <Tooltip content={<CustomTooltip />} />
               <Legend />
               <Bar dataKey="tempoTantrums" name="Tempo Tantrums" fill="#3b82f6" radius={[0, 4, 4, 0]} />
               <Bar dataKey="pointsPints" name="Points & Pints" fill="#f97316" radius={[0, 4, 4, 0]} />
