@@ -12,6 +12,9 @@ interface TeamScore {
   activity: string;
   tempoTantrums: number;
   pointsPints: number;
+  tempoTantrumsDistance?: number;
+  pointsPintsDistance?: number;
+  unit?: string;
 }
 
 interface ProcessedActivity {

@@ -233,6 +233,9 @@ interface TeamScore {
   activity: string;
   tempoTantrums: number;
   pointsPints: number;
+  tempoTantrumsDistance?: number;
+  pointsPintsDistance?: number;
+  unit?: string;
 }
 
 interface IndividualStats {
@@ -387,6 +390,9 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
         activity: activityType,
         tempoTantrums: Math.floor(distances.tempoKm * config.perKm),
         pointsPints: Math.floor(distances.pintsKm * config.perKm),
+        tempoTantrumsDistance: Math.round(distances.tempoKm * 10) / 10,
+        pointsPintsDistance: Math.round(distances.pintsKm * 10) / 10,
+        unit: 'km',
       });
     }
   }
@@ -397,6 +403,9 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
       activity: 'Workout',
       tempoTantrums: workoutCounts.tempoCount * 6,
       pointsPints: workoutCounts.pintsCount * 6,
+      tempoTantrumsDistance: workoutCounts.tempoCount,
+      pointsPintsDistance: workoutCounts.pintsCount,
+      unit: 'workouts',
     });
   }
 
@@ -409,6 +418,9 @@ function processActivities(storedActivities: StoredActivity[]): DashboardData {
       activity: 'Elevation',
       tempoTantrums: tempoElevationPoints,
       pointsPints: pintsElevationPoints,
+      tempoTantrumsDistance: Math.round(elevationTotals.tempoMeters),
+      pointsPintsDistance: Math.round(elevationTotals.pintsMeters),
+      unit: 'm',
     });
   }
 
