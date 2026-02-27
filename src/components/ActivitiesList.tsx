@@ -20,9 +20,10 @@ interface ProcessedActivity {
 interface Props {
   data: ProcessedActivity[];
   onDateSaved?: () => void;
+  isAdmin?: boolean;
 }
 
-export default function ActivitiesList({ data, onDateSaved }: Props) {
+export default function ActivitiesList({ data, onDateSaved, isAdmin = false }: Props) {
   const [sortColumn, setSortColumn] = useState<keyof ProcessedActivity>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -248,8 +249,8 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Needs dates banner */}
-      {needingDates > 0 && (
+      {/* Needs dates banner - only show for admin */}
+      {isAdmin && needingDates > 0 && (
         <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">📅</span>
@@ -334,8 +335,8 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
         </p>
       </div>
 
-      {/* Bulk Action Bar */}
-      {selectedIds.size > 0 && (
+      {/* Bulk Action Bar - only show for admin */}
+      {isAdmin && selectedIds.size > 0 && (
         <div className="bg-blue-500/20 border border-blue-500/50 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">✓</span>
@@ -390,14 +391,16 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                   </th>
                 ))}
                 <th className="text-left py-3 px-4 text-slate-300 font-medium">Team</th>
-                <th className="py-3 px-4 text-slate-300 font-medium text-center w-12">
-                  <input
-                    type="checkbox"
-                    checked={sortedActivities.length > 0 && selectedIds.size === sortedActivities.length}
-                    onChange={handleSelectAll}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-                  />
-                </th>
+                {isAdmin && (
+                  <th className="py-3 px-4 text-slate-300 font-medium text-center w-12">
+                    <input
+                      type="checkbox"
+                      checked={sortedActivities.length > 0 && selectedIds.size === sortedActivities.length}
+                      onChange={handleSelectAll}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                    />
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -407,7 +410,7 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                   className={`border-t border-slate-700/50 hover:bg-slate-700/30 transition-colors ${getTeamBgColor(activity.team)}`}
                 >
                   <td className="py-3 px-4">
-                    {editingId === activity.id ? (
+                    {isAdmin && editingId === activity.id ? (
                       <div className="flex items-center gap-2">
                         <input
                           type="date"
@@ -430,20 +433,28 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                         </button>
                       </div>
                     ) : activity.date === 'Unknown' ? (
-                      <button
-                        onClick={() => handleEditDate(activity)}
-                        className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer"
-                      >
-                        Unknown
-                      </button>
+                      isAdmin ? (
+                        <button
+                          onClick={() => handleEditDate(activity)}
+                          className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer"
+                        >
+                          Unknown
+                        </button>
+                      ) : (
+                        <span className="text-yellow-400">Unknown</span>
+                      )
                     ) : (
-                      <span
-                        onClick={() => handleEditDate(activity)}
-                        className="text-white cursor-pointer hover:text-blue-400"
-                        title="Click to edit"
-                      >
-                        {formatDate(activity.date)}
-                      </span>
+                      isAdmin ? (
+                        <span
+                          onClick={() => handleEditDate(activity)}
+                          className="text-white cursor-pointer hover:text-blue-400"
+                          title="Click to edit"
+                        >
+                          {formatDate(activity.date)}
+                        </span>
+                      ) : (
+                        <span className="text-white">{formatDate(activity.date)}</span>
+                      )
                     )}
                   </td>
                   <td className="py-3 px-4 text-white">{activity.athlete}</td>
@@ -454,14 +465,16 @@ export default function ActivitiesList({ data, onDateSaved }: Props) {
                   <td className={`py-3 px-4 ${getTeamColor(activity.team)}`}>
                     {activity.team || '-'}
                   </td>
-                  <td className="py-3 px-4 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(activity.id)}
-                      onChange={() => handleToggleSelect(activity.id)}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-                    />
-                  </td>
+                  {isAdmin && (
+                    <td className="py-3 px-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(activity.id)}
+                        onChange={() => handleToggleSelect(activity.id)}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

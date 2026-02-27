@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import TeamScoreboard from './TeamScoreboard';
 import ActivitiesList from './ActivitiesList';
 import DailyTracker from './DailyTracker';
 import IndividualsTable from './IndividualsTable';
 import CountdownTimer from './CountdownTimer';
+import { useAdmin } from '@/hooks/useAdmin';
 
 // Types matching the Strava API response
 interface TeamScore {
@@ -58,12 +59,13 @@ interface DashboardData {
   lastUpdated: string;
 }
 
-export default function Dashboard() {
+function DashboardContent() {
   const [activeTab, setActiveTab] = useState<'scoreboard' | 'individuals' | 'activities' | 'tracker'>('scoreboard');
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const isAdmin = useAdmin();
 
   const loadData = async () => {
     setLoading(true);
@@ -192,7 +194,7 @@ export default function Dashboard() {
               <IndividualsTable data={data.individuals} />
             )}
             {activeTab === 'activities' && (
-              <ActivitiesList data={data.activities} onDateSaved={loadData} />
+              <ActivitiesList data={data.activities} onDateSaved={loadData} isAdmin={isAdmin} />
             )}
             {activeTab === 'tracker' && (
               <DailyTracker data={data.dailyTracker} totals={data.totals} />
@@ -206,5 +208,18 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+export default function Dashboard() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
