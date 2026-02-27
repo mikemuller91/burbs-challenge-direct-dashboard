@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 
-// Challenge ends at midnight on Feb 28, 2026 SAST (UTC+2)
-// That's Feb 27, 2026 22:00:00 UTC
-const END_DATE = new Date('2026-02-28T00:00:00+02:00');
+// Challenge ends at 8 PM on Feb 28, 2026 CAT (Central African Time, UTC+2)
+// That's Feb 28, 2026 18:00:00 UTC
+const END_DATE = new Date('2026-02-28T20:00:00+02:00');
 
 interface TimeLeft {
   days: number;
